@@ -33,3 +33,27 @@ class ConfigurationError(AppException):
     code = "configuration_error"
     message = "服务配置缺失"
     http_status = HTTPStatus.SERVICE_UNAVAILABLE
+
+class ValidationError(AppException):
+    code = "validation_error"
+    message = "参数校验失败"
+    http_status = HTTPStatus.BAD_REQUEST
+
+class UnauthorizedError(AppException):
+    """未认证 / 凭证无效；前端拦截 401 会清登录态并跳转 /login。"""
+
+    code = "unauthorized"
+    message = "请先登录"
+    http_status = HTTPStatus.UNAUTHORIZED
+
+class ConflictError(AppException):
+    code = "conflict"
+    message = "资源冲突"
+    http_status = HTTPStatus.CONFLICT
+
+class RateLimitedError(AppException):
+    """滑动窗口限流命中。"""
+
+    code = "rate_limited"
+    message = "请求过于频繁，请稍后再试"
+    http_status = HTTPStatus.TOO_MANY_REQUESTS

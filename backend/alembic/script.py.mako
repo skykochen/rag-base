@@ -26,3 +26,12 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
     ${downgrades if downgrades else "pass"}
+
+def upgrade() -> None:
+    # 启用 pgvector 扩展；镜像 pgvector/pgvector:pg16 已自带，无需额外安装
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
+    op.create_table(
+        "documents",
+        # ... 略 ...
+    )

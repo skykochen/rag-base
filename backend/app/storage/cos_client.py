@@ -26,6 +26,16 @@ class CosClient:
         self._client = CosS3Client(config)
         self._bucket = settings.cos_bucket
 
+    @property
+    def bucket(self) -> str:
+        return self._bucket
+
+    @property
+    def region(self) -> str:
+        return settings.cos_region
+
+
+
     async def ping(self) -> bool:
         """通过 head_bucket 验证凭据与桶可达性。"""
         try:
@@ -35,6 +45,31 @@ class CosClient:
             logger.warning("COS ping failed: %s", exc)
             return False
 
+    async def put_object(self, *, key: str, body: bytes, content_type: str) -> None:
+        """上传字节流到指定 object key。同名覆盖。"""
+        await asyncio.to_thread(
+            self._client.put_object,
+            Bucket=self._bucket,
+            Key=key,
+            Body=body,
+            ContentType=content_type,
+        )
+
+    async def get_object(self, key: str) -> bytes:
+        """读取 object 全部字节。"""
+
+        def _read() -> bytes:
+            response = self._client.get_object(Bucket=self._bucket, Key=key)
+            # SDK 返回的 Body 是流式对象，get_raw_stream 拿到原始 stream
+            return response["Body"].get_raw_stream().read()
+
+        return await asyncio.to_thread(_read)
+
+    async def delete_object(self, key: str) -> None:
+        """删除指定 object。腾讯云 SDK 删除不存在的 key 不会抛 404，天然幂等。"""
+        await asyncio.to_thread(
+            self._client.delete_object, Bucket=self._bucket, Key=key
+        )
 
 _cos_client: CosClient | None = None
 
