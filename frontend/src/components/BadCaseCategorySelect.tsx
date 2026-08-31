@@ -1,3 +1,9 @@
+/**
+ * Bad Case 归因下拉：与 backend Literal 一致的 12+1 类。
+ *
+ * value=null 代表"未归因"，前端用 undefined 给 Select 让它显示 placeholder。
+ */
+
 import { Select } from 'antd'
 import type { BadCaseCategory } from '@/api/evaluation'
 import { BAD_CASE_CATEGORY_LABELS } from '@/utils/badCaseCategory'

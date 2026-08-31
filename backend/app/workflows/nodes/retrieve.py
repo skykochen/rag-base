@@ -1,20 +1,27 @@
-"""retrieve：执行向量 Top-K 检索，并判断是否触发拒答。
+"""retrieve：执行向量 + 关键词混合检索（RRF 融合），把召回结果交给后续 rerank。
 
-multi_query 路径下需要多路召回 + 去重；其他路径走单路。
+第 4 章：单路向量检索。
+第 6 章：升级为 HybridRetriever（向量 + 全文 + RRF 融合）。
+第 8 章：召回数量从 `retrieval_top_k` 放大到 `retrieval_recall_top_k`，
+        把全部候选交给 rerank 精排，最终 Top-K 由 rerank 节点裁剪。
+第 11 章：把 state["permissions"] 透传到 retriever，让 SQL 层完成权限过滤。
+
+multi_query 路径下每个子查询独立做一次 hybrid 检索，再按第 5 章约定的
+朴素合并去重；不在子查询之间再做嵌套 RRF。
+
+拒答闸门已移交 judge_context 节点统一处理（第 8 章），retrieve 只负责召回。
 """
 
 from app.core.config import settings
 from app.retrieval.hybrid_retriever import HybridRetriever
-from app.retrieval.vector_retriever import VectorRetriever, RetrievedChunk
+from app.retrieval.vector_retriever import RetrievedChunk
 from app.workflows.rag_state import RAGState
 
 
-# async def retrieve(state: RAGState, session: AsyncSession) -> RAGState:
-async def retrieve(state: RAGState) -> RAGState: #每个路单独创建一个session
+async def retrieve(state: RAGState) -> RAGState:
     retriever = HybridRetriever()
     recall_top_k = settings.retrieval_recall_top_k
     permissions = state.get("permissions")
-    # final_top_k=settings.retrieval_top_k
 
     if state.get("route") == "multi_query" and state.get("multi_queries"):
         # 各子查询独立走 hybrid 检索，再合并；不做嵌套 RRF
@@ -24,7 +31,6 @@ async def retrieve(state: RAGState) -> RAGState: #每个路单独创建一个ses
                 await retriever.search(
                     sub_query,
                     recall_top_k=recall_top_k,
-                    # final_top_k=final_top_k,
                     final_top_k=recall_top_k,
                     permission_tags=permissions,
                 )
@@ -33,40 +39,21 @@ async def retrieve(state: RAGState) -> RAGState: #每个路单独创建一个ses
     else:
         chunks = await retriever.search(
             state["query"],
-            recall_top_k = recall_top_k,
+            recall_top_k=recall_top_k,
             final_top_k=recall_top_k,
-            original_question=state.get("question"),
             permission_tags=permissions,
         )
-    #拒答判定
-    # refused = not chunks or chunks[0].score < settings.retrieval_min_score
-    # refused = _should_refused(chunks)
-    # update: RAGState = {
-    #     "retrieved_chunks": chunks,
-    #     "refused": refused,
-    # }
-    # if refused:
-    #     update["answer"] = REFUSAL_ANSWER
-    # return update
+
     return {"retrieved_chunks": chunks}
-
-# def _should_refused(chunks: list[RetrievedChunk]) -> bool:
-#     """混合检索后的拒答判定，仅看 Top1 的语义相关度。"""
-#     if not chunks:
-#         return True
-#     top = chunks[0]
-#     if top.vector_score is None:
-#         return True # Top1 仅命中关键词路，缺乏语义佐证
-#     return top.vector_score < settings.retrieval_min_score
-
 
 
 def _merge_chunks(
-        bundles: list[list[RetrievedChunk]],
-        top_k: int) -> list[RetrievedChunk]:
-    """多路召回结果去重 + 取 Top-K。
-    同一个 chunk 可能在多条子查询中都命中；这里保留最高 score，使用多路融合分时保留RRF分最高的那条
-    再整体按 score 降序取前 top_k。
+    bundles: list[list[RetrievedChunk]], top_k: int
+) -> list[RetrievedChunk]:
+    """multi_query 子查询结果合并：去重 + 取 Top-K。
+
+    同一个 chunk 可能在多条子查询中都命中；保留 RRF 分最高的那条，
+    再整体按 RRF 分降序取前 top_k。
     """
     best: dict[str, RetrievedChunk] = {}
     for bundle in bundles:
@@ -75,5 +62,5 @@ def _merge_chunks(
             prev = best.get(key)
             if prev is None or (chunk.rrf_score or 0.0) > (prev.rrf_score or 0.0):
                 best[key] = chunk
-    ranked = sorted(best.values(), key=lambda c: c.score, reverse=True)
+    ranked = sorted(best.values(), key=lambda c: c.rrf_score or 0.0, reverse=True)
     return ranked[:top_k]

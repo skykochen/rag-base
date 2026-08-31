@@ -1,9 +1,16 @@
+"""文件存储高层封装。
+
+业务代码统一通过 FileService 操作文件，不直接调 CosClient，便于以后切换存储后端
+（本地磁盘、S3 等）时只改这一层。
+"""
+
 from qcloud_cos.cos_exception import CosClientError, CosServiceError
 
 from app.core.logging import get_logger
 from app.storage.cos_client import CosClient, get_cos_client
 
 logger = get_logger(__name__)
+
 
 class FileService:
     def __init__(self, cos: CosClient | None = None) -> None:

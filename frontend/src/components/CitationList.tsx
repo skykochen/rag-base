@@ -1,20 +1,7 @@
-
-type SourceTagMeta = { color: string; label: string }
-
-function formatSourceTag(sources?: string[]): SourceTagMeta | null {
-  if (!sources || sources.length === 0) return null
-  const hasVector = sources.includes('vector')
-  const hasKeyword = sources.includes('keyword')
-  if (hasVector && hasKeyword) return { color: 'purple', label: '混合' }
-  if (hasVector) return { color: 'blue', label: '向量' }
-  if (hasKeyword) return { color: 'orange', label: '关键词' }
-  return null
-}
-
 import { forwardRef, useImperativeHandle, useState } from 'react'
+import { Collapse, Tag, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import type { CitationRead } from '@/client/types.gen'
-import {Collapse, Tag, Typography} from "antd";
 
 const { Paragraph } = Typography
 
@@ -27,6 +14,18 @@ interface CitationListProps {
   citations: CitationRead[]
   /** 用于生成 DOM 锚点 id，避免多条 assistant 消息的引用面板互相串扰。 */
   messageId: string
+}
+
+type SourceTagMeta = { color: string; label: string }
+
+function formatSourceTag(sources?: string[]): SourceTagMeta | null {
+  if (!sources || sources.length === 0) return null
+  const hasVector = sources.includes('vector')
+  const hasKeyword = sources.includes('keyword')
+  if (hasVector && hasKeyword) return { color: 'purple', label: '混合' }
+  if (hasVector) return { color: 'blue', label: '向量' }
+  if (hasKeyword) return { color: 'orange', label: '关键词' }
+  return null
 }
 
 export const CitationList = forwardRef<CitationListHandle, CitationListProps>(
@@ -57,47 +56,43 @@ export const CitationList = forwardRef<CitationListHandle, CitationListProps>(
     if (citations.length === 0) return null
 
     const items = citations.map((c) => {
-        const sourceTag = formatSourceTag(c.retrieval_meta?.sources)
-        const rerankScore = c.retrieval_meta?.rerank_score
-        return {
-            key: panelKey(c),
-            label: (
-                <span id={anchorId(messageId, c.ordinal)}>
-                    <Tag color="blue" style={{marginInlineEnd: 8}}>{`[${c.ordinal}]`}</Tag>
-
-                    {sourceTag ? (
-                        <Tag color={sourceTag.color} style={{marginInlineEnd: 8}}>
-                            {sourceTag.label}
-                        </Tag>
-                    ) : null}
-
-                    {rerankScore != null ? (
-                        <Tag color="gold" style={{marginInlineEnd: 8}}>
-                            {`rerank ${rerankScore.toFixed(2)}`}
-                        </Tag>
-                    ) : null}
-
-                    {c.document_id ? (
-                        <Link to={`/documents/${c.document_id}`}>{c.document_name}</Link>
-                    ) : (
-                        <span>{c.document_name}</span>
-                    )}
-                    {c.page_no != null ? (
-                        <span style={{marginInlineStart: 8, color: '#999'}}>第 {c.page_no} 页</span>
-                    ) : null}
-                </span>
-            ),
-            children: (
-                <Paragraph
-                    style={{whiteSpace: 'pre-wrap', marginBottom: 0, color: '#555'}}
-                    ellipsis={{rows: 6, expandable: true, symbol: '展开'}}
-                >
-                    {c.quote}
-                </Paragraph>
-            ),
-        }
+      const sourceTag = formatSourceTag(c.retrieval_meta?.sources)
+      const rerankScore = c.retrieval_meta?.rerank_score
+      return {
+      key: panelKey(c),
+      label: (
+        <span id={anchorId(messageId, c.ordinal)}>
+          <Tag color="blue" style={{ marginInlineEnd: 8 }}>{`[${c.ordinal}]`}</Tag>
+          {sourceTag ? (
+            <Tag color={sourceTag.color} style={{ marginInlineEnd: 8 }}>
+              {sourceTag.label}
+            </Tag>
+          ) : null}
+          {rerankScore != null ? (
+            <Tag color="gold" style={{ marginInlineEnd: 8 }}>
+              {`rerank ${rerankScore.toFixed(2)}`}
+            </Tag>
+          ) : null}
+          {c.document_id ? (
+            <Link to={`/documents/${c.document_id}`}>{c.document_name}</Link>
+          ) : (
+            <span>{c.document_name}</span>
+          )}
+          {c.page_no != null ? (
+            <span style={{ marginInlineStart: 8, color: '#999' }}>第 {c.page_no} 页</span>
+          ) : null}
+        </span>
+      ),
+      children: (
+        <Paragraph
+          style={{ whiteSpace: 'pre-wrap', marginBottom: 0, color: '#555' }}
+          ellipsis={{ rows: 6, expandable: true, symbol: '展开' }}
+        >
+          {c.quote}
+        </Paragraph>
+      ),
+      }
     })
-
 
     return (
       <Collapse

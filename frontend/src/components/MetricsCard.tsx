@@ -1,3 +1,7 @@
+/**
+ * 单个指标卡：label + 数值 + 简短说明，详情页指标行复用。
+ */
+
 import { Card, Statistic, Tooltip } from 'antd'
 import { QuestionCircleOutlined } from '@ant-design/icons'
 
@@ -18,6 +22,7 @@ function formatValue(value: number | null | undefined, passthrough: boolean) {
 
 function colorOf(value: number | null | undefined, passthrough: boolean) {
   if (value === null || value === undefined) return undefined
+  // passthrough（如 avg_latency_ms）不染色
   if (passthrough) return undefined
   if (value >= 0.8) return '#52c41a'
   if (value >= 0.6) return '#faad14'

@@ -1,3 +1,5 @@
+"""评测与 Bad Case 分析模块。"""
+
 from app.evaluation.dataset import EvaluationCase, list_datasets, load_dataset
 from app.evaluation.ragas_runner import RagasMetrics, evaluate_batch
 from app.evaluation.scoring import (

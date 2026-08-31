@@ -1,3 +1,13 @@
+"""评测业务动作 + 异步执行器（第 10 章）。
+
+控制流（前端触发 BackgroundTasks 模式，与第 3 章文档入库同口径）：
+    POST /api/evaluations/runs
+        → service.create_run 创建 run（status=running）
+        → background_tasks.add_task(execute_evaluation_run, run.id)
+        → 后台逐条跑 RAG + 落 evaluation_items
+        → 跑完后一次性算 RAGAS + Bad Case 归因 + 聚合指标
+"""
+
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -22,6 +32,7 @@ from app.evaluation.ragas_runner import RagasMetrics, RagasSample, evaluate_batc
 from app.services.chat_service import ChatService, EvaluationAnswer
 
 logger = get_logger(__name__)
+
 
 class EvaluationService:
     """评测业务动作（非异步执行部分）：CRUD + 列表筛选 + Bad Case PATCH。"""
@@ -55,7 +66,9 @@ class EvaluationService:
             raise NotFoundError("评测 run 不存在")
         return run
 
-    async def list_runs(self, page: int, page_size: int):
+    async def list_runs(
+        self, page: int, page_size: int
+    ) -> tuple[list[EvaluationRun], int]:
         return await self.run_repo.list_page(page=page, page_size=page_size)
 
     async def delete_run(self, run_id: UUID) -> None:
@@ -65,19 +78,22 @@ class EvaluationService:
         await self.session.commit()
 
     async def list_items(
-            self,
-            run_id: UUID,
-            page: int,
-            page_size: int,
-            *,
-            bad_case_only: bool,
-            category: str | None,
-    ):
+        self,
+        run_id: UUID,
+        page: int,
+        page_size: int,
+        *,
+        bad_case_only: bool,
+        category: str | None,
+    ) -> tuple[list[EvaluationItem], int]:
         # 先确认 run 存在，避免空 list 和"run 不存在"混在一起
         await self.get_run(run_id)
         return await self.item_repo.list_page(
-            run_id, page=page, page_size=page_size,
-            bad_case_only=bad_case_only, category=category,
+            run_id,
+            page=page,
+            page_size=page_size,
+            bad_case_only=bad_case_only,
+            category=category,
         )
 
     async def get_item(self, item_id: UUID) -> EvaluationItem:
@@ -87,12 +103,12 @@ class EvaluationService:
         return item
 
     async def update_item_bad_case(
-            self,
-            item_id: UUID,
-            *,
-            bad_case_category: str | None,
-            bad_case_note: str | None,
-            is_bad_case: bool | None,
+        self,
+        item_id: UUID,
+        *,
+        bad_case_category: str | None,
+        bad_case_note: str | None,
+        is_bad_case: bool | None,
     ) -> EvaluationItem:
         """前端覆盖 Bad Case 归因：
 
@@ -120,6 +136,7 @@ class EvaluationService:
 
     def list_datasets(self) -> list[tuple[str, int]]:
         return list_datasets()
+
 
 async def execute_evaluation_run(run_id: UUID) -> None:
     """评测 run 异步执行器：BackgroundTasks 调用。
@@ -172,6 +189,7 @@ async def execute_evaluation_run(run_id: UUID) -> None:
                 run.error_message = (str(exc).strip() or exc.__class__.__name__)[:500]
                 await session.commit()
 
+
 async def _run_single_case(run_id: UUID, case) -> None:
     """跑一条 case：独立 session + 独立事务写一行 item。"""
     async with AsyncSessionLocal() as session:
@@ -222,6 +240,7 @@ async def _run_single_case(run_id: UUID, case) -> None:
                 run.progress_failed += 1
         await session.commit()
 
+
 async def _finalize_run(run_id: UUID) -> None:
     """跑完所有 case 后：一次性算 RAGAS → Bad Case 归因 → 聚合指标。"""
     async with AsyncSessionLocal() as session:
@@ -252,8 +271,9 @@ async def _finalize_run(run_id: UUID) -> None:
 
         metrics_list: list[RagasMetrics | None] = [None] * len(items)
         if samples_with_index:
-            indexed_metrics = await evaluate_batch([s for _, s in samples_with_index])
-            # 按索引对齐
+            indexed_metrics = await evaluate_batch(
+                [s for _, s in samples_with_index]
+            )
             for (idx, _), m in zip(samples_with_index, indexed_metrics, strict=True):
                 metrics_list[idx] = m
 
@@ -277,6 +297,7 @@ async def _finalize_run(run_id: UUID) -> None:
             )
             item.is_bad_case = rule.is_bad_case
             item.bad_case_category = rule.category
+
         # 聚合指标：None 不参与平均
         run = await EvaluationRunRepository(session).get(run_id)
         if run is not None:
@@ -303,6 +324,7 @@ async def _finalize_run(run_id: UUID) -> None:
             )
 
         await session.commit()
+
 
 def _chunk_meta(chunk) -> dict:
     """把 RetrievedChunk 序列化成评测 items.retrieved_chunks_meta 用的轻量 dict。

@@ -1,3 +1,33 @@
+"""
+==========================================
+  Prompts 集中管理 —— 项目中所有 LLM 提示词都在这里
+==========================================
+
+【为什么提示词集中管理？】
+- 不用在代码里到处找 prompt 文本
+- 调优提示词时只改一个文件
+- 便于对比不同版本的效果
+
+【引用规则设计思考】
+[引用编号] 是 RAG 系统用户体验的关键。
+如果 LLM 随便标引用，用户会困惑。
+所以我们用 prompt 强力约束引用规则：
+- 每个结论必须标记对应的片段编号
+- 编号必须精确对应片段
+- 不能用同文档不同片段混标
+"""
+
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+from app.db.models import Message, MessageRole
+from app.retrieval.vector_retriever import RetrievedChunk
+
+
+# ══════════════════════════════════════════════════════════════════
+# 第 4 章：主问答 Prompt（RAG 的核心！）
+# ══════════════════════════════════════════════════════════════════
+
 _SYSTEM_PROMPT = """你是企业知识库助手，必须严格遵守以下规则：
 
 1. 只基于下面【参考资料】中提供的【片段】作答，禁止使用片段之外的常识或主观推断。
@@ -26,27 +56,22 @@ _SYSTEM_PROMPT = """你是企业知识库助手，必须严格遵守以下规则
 {context}
 """
 
+# MessagesPlaceholder("chat_history", optional=True)：
+# 如果 chat_history 为空或不传，LLM 不会报错
+RAG_ANSWER_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", _SYSTEM_PROMPT),
+    MessagesPlaceholder("chat_history", optional=True),
+    ("human", "{question}"),
+])
 
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-
-from app.db.models import Message, MessageRole
-from app.retrieval.vector_retriever import RetrievedChunk
-
-
-RAG_ANSWER_PROMPT = ChatPromptTemplate.from_messages(
-    [
-        ("system", _SYSTEM_PROMPT),
-        MessagesPlaceholder("chat_history", optional=True),
-        ("human", "{question}"),
-    ]
-)
 
 def format_context(chunks: list[RetrievedChunk]) -> str:
-    """把检索结果拼成给 LLM 的【参考资料】文本。
+    """
+    把检索结果拼成给 LLM 看的参考资料文本。
 
-    用「片段 N」而非「来源：xxx」做强标记，避免 LLM 把 [N] 误解为
-    "第 N 份文档"——同一文档命中多 chunk 时这种误解会导致引用张冠李戴。
+    设计细节：
+    - 用「片段 N」而非「文档名」做编号，避免 LLM 把 N 误解为"文档编号"
+    - 同一文档的不同切片有不同的 N，防止 LLM 用同文档不同切片乱标引用
     """
     if not chunks:
         return "（无）"
@@ -62,7 +87,7 @@ def format_context(chunks: list[RetrievedChunk]) -> str:
 
 
 def history_to_messages(history: list[Message]) -> list[BaseMessage]:
-    """把数据库 Message 转成 langchain BaseMessage，用于塞进 prompt。"""
+    """把数据库 Message 对象转成 langchain 的 BaseMessage。"""
     messages: list[BaseMessage] = []
     for msg in history:
         if msg.role == MessageRole.USER:
@@ -75,50 +100,50 @@ def history_to_messages(history: list[Message]) -> list[BaseMessage]:
 
 
 def build_answer_messages(
-    question: str,
-    chunks: list[RetrievedChunk],
-    history: list[Message],
+    question: str, chunks: list[RetrievedChunk], history: list[Message]
 ) -> list[BaseMessage]:
-    """组装最终送给 LLM 的 messages 列表。"""
-    prompt_value = RAG_ANSWER_PROMPT.invoke(
-        {
-            "context": format_context(chunks),
-            "question": question,
-            "chat_history": history_to_messages(history),
-        }
-    )
+    """组装最终送给 LLM 的对话消息列表。"""
+    prompt_value = RAG_ANSWER_PROMPT.invoke({
+        "context": format_context(chunks),
+        "question": question,
+        "chat_history": history_to_messages(history),
+    })
     return list(prompt_value.to_messages())
 
 
-# 检索失败时的固定拒答文案，集中管理便于后续章节统一调整
+# 检索失败时的统一拒答文案
 REFUSAL_ANSWER = "抱歉，知识库中没有找到与该问题相关的可靠依据。"
 
+
+# ══════════════════════════════════════════════════════════════════
+# 第 5 章：Query 优化 Prompt
+# ══════════════════════════════════════════════════════════════════
 
 _ROUTE_SYSTEM = """你是 RAG 系统的查询路由器，要把用户问题归到下列 4 种策略之一：
 
 - original：问题清晰、表达完整、用词具体（含专有名词 / 编号 / 实体），直接检索即可。
-- rewrite：问题存在指代("它"、"这个"、"那")、省略、口语化或表达不完整，需要改写成独立完整的问题。
-- hyde：问题抽象 / 开放式("什么是..."、"为什么..."、"如何理解..."），关键词稀疏，直接检索容易召回不到。
+- rewrite：问题存在指代（"它"、"这个"、"那"）、省略、口语化或表达不完整，需要改写成独立完整的问题。
+- hyde：问题抽象 / 开放式（"什么是..."、"为什么..."、"如何理解..."），关键词稀疏，直接检索容易召回不到。
 - multi_query：问题包含多个角度、多个并列子问题，或者一个角度难以一次召回全（如"对比 A 和 B"、"X 的优缺点"）。
 
 只输出一个英文小写的 route 名称，不要加任何解释、引号或标点。"""
 
-_ROUTE_HUMAN = "{question}"
-
-QUERY_ROUTE_PROMPT = ChatPromptTemplate.from_messages(
-    [("system", _ROUTE_SYSTEM), ("human", _ROUTE_HUMAN)]
-)
+QUERY_ROUTE_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", _ROUTE_SYSTEM),
+    ("human", "{question}"),
+])
 
 _REWRITE_SYSTEM = """你是一个查询改写助手。把用户问题改写成一个**独立完整**的检索查询：
 
-- 消解指代("它"、"这个"、"那")和省略，补齐缺失主语 / 宾语。
+- 消解指代（"它"、"这个"、"那"）和省略，补齐缺失主语 / 宾语。
 - 把口语化表达改成书面、客观、具体的描述。
 - 不要扩写、不要解释、不要回答问题。
 - 输出**单行**改写后的问题，不要加引号或编号。"""
 
-QUERY_REWRITE_PROMPT = ChatPromptTemplate.from_messages(
-    [("system", _REWRITE_SYSTEM), ("human", "{question}")]
-)
+QUERY_REWRITE_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", _REWRITE_SYSTEM),
+    ("human", "{question}"),
+])
 
 _HYDE_SYSTEM = """你是一个 HyDE（Hypothetical Document Embeddings）助手。请基于一般领域常识，
 写一段**假设性的回答**用于向量召回——不需要真实，但要包含问题相关的关键词、术语和概念。
@@ -130,10 +155,10 @@ _HYDE_SYSTEM = """你是一个 HyDE（Hypothetical Document Embeddings）助手�
 - 不要表达"无法回答"——HyDE 的目的就是制造可用于嵌入的稠密文本。
 - 直接输出回答正文，不加标题、不加引号。"""
 
-HYDE_PROMPT = ChatPromptTemplate.from_messages(
-    [("system", _HYDE_SYSTEM), ("human", "{question}")]
-)
-
+HYDE_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", _HYDE_SYSTEM),
+    ("human", "{question}"),
+])
 
 _MULTI_QUERY_SYSTEM = """你是一个查询扩展助手。请把用户问题改写成 {n} 个**不同角度**的子查询，
 用于多路向量召回，提高覆盖率。
@@ -144,28 +169,16 @@ _MULTI_QUERY_SYSTEM = """你是一个查询扩展助手。请把用户问题改�
 - 每行一个子查询，**不要**编号、不要前缀、不要解释。
 - 输出 {n} 行，不多不少。"""
 
-MULTI_QUERY_PROMPT = ChatPromptTemplate.from_messages(
-    [("system", _MULTI_QUERY_SYSTEM), ("human", "{question}")]
-)
-
-#对应 RAG 查询路由的四种策略，各自把用户问题包装成一组 LangChain BaseMessage 列表，用于后续传给 LLM
-def build_route_messages(question: str) -> list[BaseMessage]:
-    return list(QUERY_ROUTE_PROMPT.invoke({"question": question}).to_messages())
-
-def build_rewrite_messages(question: str) -> list[BaseMessage]:
-    return list(QUERY_REWRITE_PROMPT.invoke({"question": question}).to_messages())
-
-def build_hyde_messages(question: str) -> list[BaseMessage]:
-    return list(HYDE_PROMPT.invoke({"question": question}).to_messages())
-
-def build_multi_query_messages(question: str, n: int) -> list[BaseMessage]:
-    return list(MULTI_QUERY_PROMPT.invoke({"question": question, "n": n}).to_messages())
+MULTI_QUERY_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", _MULTI_QUERY_SYSTEM),
+    ("human", "{question}"),
+])
 
 
+# ══════════════════════════════════════════════════════════════════
+# 第 7 章：Agentic RAG 决策器 Prompt
+# ══════════════════════════════════════════════════════════════════
 
-# ============================================================================
-# 第 7 章：Agentic RAG 决策器 prompt
-# ============================================================================
 _AGENT_PLAN_SYSTEM = """你是 RAG 系统的检索决策器。系统会基于检索到的片段回答用户问题，
 但上一轮检索的结果不够好（Top1 语义相似度过低或没有命中）。请基于"前几轮的检索观察"，决定下一步：
 
@@ -187,36 +200,22 @@ _AGENT_PLAN_HUMAN = """用户原始问题：{question}
 
 当前 query：{current_query}
 当前 route：{current_route}
+
 历史轮次观察：
 {history}
-请输出下一步决策的 JSON。
-"""
 
-AGENT_PLAN_PROMPT = ChatPromptTemplate.from_messages(
-    [("system", _AGENT_PLAN_SYSTEM), ("human", _AGENT_PLAN_HUMAN)]
-)
+请输出下一步决策的 JSON。"""
 
-def build_agent_plan_messages(
-        question: str,
-        current_query: str,
-        current_route: str,
-        history: str,
-) -> list[BaseMessage]:
-    return list(
-        AGENT_PLAN_PROMPT.invoke({
-        "question": question,
-        "current_query": current_query,
-        "current_route": current_route,
-        "history": history,
-    }
-        ).to_messages()
-    )
+AGENT_PLAN_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", _AGENT_PLAN_SYSTEM),
+    ("human", _AGENT_PLAN_HUMAN),
+])
 
 
+# ══════════════════════════════════════════════════════════════════
+# 第 8 章：多轮上下文化 + 答案校验 Prompt
+# ══════════════════════════════════════════════════════════════════
 
-# ============================================================================
-# 第 8 章：多轮上下文化、答案校验 prompt
-# ============================================================================
 _CONTEXTUALIZE_SYSTEM = """你是一个多轮对话查询改写助手。请基于对话历史把用户当前问题改写成
 **独立完整、可单独检索**的问句：
 
@@ -229,20 +228,12 @@ _CONTEXTUALIZE_SYSTEM = """你是一个多轮对话查询改写助手。请基�
 【对话历史】
 {history}"""
 
-_CONTEXTUALIZE_HUMAN = "{question}"
-CONTEXTUALIZE_PROMPT = ChatPromptTemplate.from_messages(
-    [("system", _CONTEXTUALIZE_SYSTEM), ("human", _CONTEXTUALIZE_HUMAN)]
-)
+CONTEXTUALIZE_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", _CONTEXTUALIZE_SYSTEM),
+    ("human", "{question}"),
+])
 
-def build_contextualize_messages(question: str, history: str) -> list[BaseMessage]:
-    return list(
-        CONTEXTUALIZE_PROMPT.invoke(
-            {"question": question, "history": history}
-        ).
-        to_messages()
-    )
-
-_VERIFY_ANSWER_SYSTEM =  """你是一个 RAG 答案可信度校验员。请判断回答是否**完全被给定的参考片段支撑**：
+_VERIFY_ANSWER_SYSTEM = """你是一个 RAG 答案可信度校验员。请判断回答是否**完全被给定的参考片段支撑**：
 
 判定标准：
 - 答案中每个关键事实结论（数字、名称、规则、时间、条款）都必须能在某个片段原文中**直接找到**
@@ -257,31 +248,55 @@ _VERIFY_ANSWER_SYSTEM =  """你是一个 RAG 答案可信度校验员。请判�
 输出**单行 JSON**，键固定为 verified / reason，reason 用一句话说清楚理由（中文）。
 示例：{{"verified": false, "reason": "答案提到差旅住宿 800 元，片段中只提到 600 元"}}"""
 
-_VERIFY_ANSWER_HUMAN = """【用户问题】: {question}
+_VERIFY_ANSWER_HUMAN = """【用户问题】
+{question}
+
 【参考片段】
 {chunks_text}
 
 【模型回答】
 {answer}
 
-请输出校验结果 JSON。
-"""
+请输出校验结果 JSON。"""
 
-VERIFY_ANSWER_PROMPT = ChatPromptTemplate.from_messages(
-    [("system", _VERIFY_ANSWER_SYSTEM), ("human", _VERIFY_ANSWER_HUMAN)]
-)
+VERIFY_ANSWER_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", _VERIFY_ANSWER_SYSTEM),
+    ("human", _VERIFY_ANSWER_HUMAN),
+])
 
-def build_verify_answer_messages(
-        question: str,
-        answer: str,
-        chunks_text: str,
-) -> list[BaseMessage]:
-    return list(
-        VERIFY_ANSWER_PROMPT.invoke(
-            {
-                "question": question,
-                "answer": answer,
-                "chunks_text": chunks_text,
-            }
-        ).to_messages()
-    )
+
+# ══════════════════════════════════════════════════════════════════
+# 以下为消息构建辅助函数
+# ══════════════════════════════════════════════════════════════════
+
+
+def build_route_messages(question: str) -> list[BaseMessage]:
+    return list(QUERY_ROUTE_PROMPT.invoke({"question": question}).to_messages())
+
+
+def build_rewrite_messages(question: str) -> list[BaseMessage]:
+    return list(QUERY_REWRITE_PROMPT.invoke({"question": question}).to_messages())
+
+
+def build_hyde_messages(question: str) -> list[BaseMessage]:
+    return list(HYDE_PROMPT.invoke({"question": question}).to_messages())
+
+
+def build_multi_query_messages(question: str, n: int) -> list[BaseMessage]:
+    return list(MULTI_QUERY_PROMPT.invoke({"question": question, "n": n}).to_messages())
+
+
+def build_agent_plan_messages(question: str, current_query: str, current_route: str, history: str) -> list[BaseMessage]:
+    return list(AGENT_PLAN_PROMPT.invoke({
+        "question": question, "current_query": current_query, "current_route": current_route, "history": history,
+    }).to_messages())
+
+
+def build_contextualize_messages(question: str, history: str) -> list[BaseMessage]:
+    return list(CONTEXTUALIZE_PROMPT.invoke({"question": question, "history": history}).to_messages())
+
+
+def build_verify_answer_messages(question: str, answer: str, chunks_text: str) -> list[BaseMessage]:
+    return list(VERIFY_ANSWER_PROMPT.invoke({
+        "question": question, "answer": answer, "chunks_text": chunks_text,
+    }).to_messages())

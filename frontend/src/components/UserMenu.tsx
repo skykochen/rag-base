@@ -1,3 +1,9 @@
+/**
+ * 顶栏右上角用户菜单：头像 + 昵称 + 角色 Tag + 「退出」。
+ *
+ * 角色 Tag 标识当前身份；非管理员无管理菜单项。
+ */
+
 import { useQueryClient } from '@tanstack/react-query'
 import { App as AntdApp, Avatar, Dropdown, Space, Tag, Typography } from 'antd'
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons'
@@ -37,7 +43,11 @@ export function UserMenu() {
       <Space style={{ cursor: 'pointer' }}>
         <Avatar size="small" icon={<UserOutlined />} />
         <Typography.Text>{user.displayName}</Typography.Text>
-        {user.isAdmin ? <Tag color="gold">管理员</Tag> : <Tag>用户</Tag>}
+        {user.isAdmin ? (
+          <Tag color="gold">管理员</Tag>
+        ) : (
+          <Tag>用户</Tag>
+        )}
       </Space>
     </Dropdown>
   )

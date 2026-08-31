@@ -1,3 +1,13 @@
+/**
+ * 会话历史侧栏：展示按 updated_at 倒序的会话列表，支持切换 / 删除 / 新建。
+ *
+ * 设计要点：
+ * - 上层（ChatPage）传入 currentId / onSelect / onDelete / onCreate，组件本身只
+ *   负责拉数据 + 渲染 + 触发回调；这样切换时取消正在进行的 SSE 等副作用全部留在 ChatPage
+ * - 删除动作用 antd Popconfirm 二次确认，避免误删历史
+ * - 新建对话按钮放在侧栏顶部，符合主流 ChatGPT 风格
+ */
+
 import { Button, List, Popconfirm, Spin, Tooltip, Typography, message } from 'antd'
 import { DeleteOutlined, MessageOutlined, PlusOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -36,7 +46,7 @@ export function ConversationSidebar({
     },
   })
 
-    const deleteMutation = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await deleteConversation({ path: { conversation_id: id } })
       return id
@@ -63,13 +73,17 @@ export function ConversationSidebar({
           新建对话
         </Button>
       </div>
+
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {conversationsQuery.isLoading ? (
           <div style={{ textAlign: 'center', padding: 24 }}>
             <Spin />
           </div>
         ) : items.length === 0 ? (
-          <Text type="secondary" style={{ display: 'block', textAlign: 'center', padding: 24 }}>
+          <Text
+            type="secondary"
+            style={{ display: 'block', textAlign: 'center', padding: 24 }}
+          >
             暂无会话，点上方"新建对话"开始
           </Text>
         ) : (
@@ -169,8 +183,9 @@ function ConversationItem({
       />
     </List.Item>
   )
+}
 
-  /** 把 ISO 时间格式化成"X 分钟前 / X 小时前 / YYYY-MM-DD"。
+/** 把 ISO 时间格式化成"X 分钟前 / X 小时前 / YYYY-MM-DD"。
  * 侧栏空间紧凑，不展示完整 datetime；超过 7 天降级到日期。
  */
 function formatRelativeTime(iso: string): string {
@@ -184,5 +199,4 @@ function formatRelativeTime(iso: string): string {
   if (diffMs < day) return `${Math.floor(diffMs / hour)} 小时前`
   if (diffMs < 7 * day) return `${Math.floor(diffMs / day)} 天前`
   return date.toISOString().slice(0, 10)
-}
 }

@@ -1,3 +1,5 @@
+"""评测相关请求 / 响应模型（第 10 章）。"""
+
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -22,6 +24,7 @@ BadCaseCategoryValue = Literal[
     "permission_filter_error",
     "other",
 ]
+
 
 class EvaluationRunCreate(BaseModel):
     """创建 run 的请求体。dataset_name 不带后缀（如 `seed`）。"""
@@ -55,6 +58,7 @@ class EvaluationRunRead(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     created_at: datetime
+
 
 class EvaluationRunListItem(BaseModel):
     """列表元素：与 Read 一致字段，提取出来后续可裁字段也方便。"""
@@ -133,6 +137,7 @@ class EvaluationItemPage(BaseModel):
     page: int
     page_size: int
 
+
 class EvaluationItemUpdate(BaseModel):
     """前端覆盖 Bad Case 归因。
 
@@ -146,6 +151,8 @@ class EvaluationItemUpdate(BaseModel):
 
 
 class DatasetInfo(BaseModel):
+    """评测集列表元素：name + size。"""
+
     name: str
     size: int
 

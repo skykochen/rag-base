@@ -1,3 +1,9 @@
+"""Agentic RAG 决策器：基于历史观察判断下一步动作。
+
+封装风格参考 `query_rewriter.py`：节点只调用 `plan`，不关心 prompt / 解析细节。
+任何异常 / 模型返回非法 → 兜底 `proceed`，不阻断主链路。
+"""
+
 import json
 from dataclasses import dataclass
 from typing import Literal, get_args
@@ -6,16 +12,19 @@ from app.core.logging import get_logger
 from app.llm.models import get_chat_model
 from app.llm.prompts import build_agent_plan_messages
 from app.workflows.rag_state import QueryRoute
+
 logger = get_logger(__name__)
+
 AgentAction = Literal["proceed", "rewrite_query", "switch_route", "refuse"]
 _VALID_ACTIONS: tuple[str, ...] = get_args(AgentAction)
 _VALID_ROUTES: tuple[str, ...] = get_args(QueryRoute)
-@dataclass
-class AgentDecision:
-    """
-    Agent 一轮决策结果
 
-    new_query / new_route 仅在对应action下有意义；其余action下为None
+
+@dataclass(frozen=True)
+class AgentDecision:
+    """Agent 一轮决策结果。
+
+    new_query / new_route 仅在对应 action 下有意义；其余 action 下为 None。
     """
 
     action: AgentAction
@@ -23,32 +32,35 @@ class AgentDecision:
     new_query: str | None = None
     new_route: QueryRoute | None = None
 
+
 class AgentPlanner:
-    """LLM 决策的封装"""
+    """LLM 决策的薄封装。"""
 
     async def plan(
-            self,
-            question: str,
-            current_query: str,
-            current_route: str,
-            previous_steps: list[dict]
+        self,
+        question: str,
+        current_route: QueryRoute,
+        current_query: str,
+        previous_steps: list[dict],
     ) -> AgentDecision:
         history = _format_history(previous_steps)
         messages = build_agent_plan_messages(
             question=question,
             current_query=current_query,
             current_route=current_route,
-            history=history)
-
+            history=history,
+        )
         try:
             response = await get_chat_model().ainvoke(messages)
             raw = _extract_text(response.content).strip()
             return _parse_decision(raw)
         except Exception:
-            logger.execption("agent planner 调用失败，降级 proceed：question=%r", question)
+            logger.exception("agent planner 调用失败，降级 proceed：question=%r", question)
             return AgentDecision(action="proceed", reason="planner_exception")
 
+
 _planner: AgentPlanner | None = None
+
 
 def get_agent_planner() -> AgentPlanner:
     global _planner
@@ -56,14 +68,15 @@ def get_agent_planner() -> AgentPlanner:
         _planner = AgentPlanner()
     return _planner
 
+
 def _format_history(steps: list[dict]) -> str:
     """把历史 agent_steps 压成一段可读文本给 LLM 看。"""
     if not steps:
-        return "(无)"
+        return "（无）"
     lines: list[str] = []
     for step in steps:
         lines.append(
-            f"- round={step.get('round')}: action={step.get('action')},"
+            f"- round {step.get('round')}: action={step.get('action')}, "
             f"route={step.get('route')}, query={step.get('query')!r}, "
             f"retrieved_count={step.get('retrieved_count')}, "
             f"top_score={step.get('top_score')}, "
@@ -71,35 +84,34 @@ def _format_history(steps: list[dict]) -> str:
         )
     return "\n".join(lines)
 
+
 def _parse_decision(raw: str) -> AgentDecision:
     """解析 LLM JSON 输出。任何字段非法 → 降级 proceed。"""
     # 容错：模型偶尔会包一层 ```json ... ```
     text = raw.strip()
-    if  text.startswith("```"):
+    if text.startswith("```"):
         text = text.strip("`")
         if text.lower().startswith("json"):
             text = text[4:]
         text = text.strip()
 
-
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        logger.warning("agent planner JSON 解析失败，降级 proceed：raw=%r", text)
-        return AgentDecision(action="proceed", reason="planner_json_decode_error")
+        logger.warning("agent planner JSON 解析失败，降级 proceed：raw=%r", raw)
+        return AgentDecision(action="proceed", reason="planner_parse_failed")
 
     if not isinstance(data, dict):
         return AgentDecision(action="proceed", reason="planner_parse_failed")
 
     action = str(data.get("action", "")).strip().lower()
     if action not in _VALID_ACTIONS:
-        logger.warning("agent planner action 无效，降级 proceed：action=%r", action)
-        return AgentDecision(action="proceed", reason="planner_action_invalid")
+        logger.warning("agent planner 返回非法 action=%r，降级 proceed", action)
+        return AgentDecision(action="proceed", reason="planner_invalid_action")
 
-    reason = str(data.get("reason", "")).strip() or "(no reason)"
+    reason = str(data.get("reason") or "").strip() or "(no reason)"
 
     new_query_raw = data.get("new_query")
-
     new_query = (
         str(new_query_raw).strip()
         if isinstance(new_query_raw, str) and new_query_raw.strip()
@@ -112,28 +124,25 @@ def _parse_decision(raw: str) -> AgentDecision:
         new_route = new_route_raw.strip().lower()  # type: ignore[assignment]
 
     # rewrite_query 必须带 new_query；缺失则降级 proceed，避免空字符串去 embedding
-    if action == "rewrite_query" and new_query is None:
-        logger.warning("agent planner rewrite_query 但无 new_query，降级 proceed：raw=%r", text)
+    if action == "rewrite_query" and not new_query:
+        logger.warning("agent planner action=rewrite_query 缺少 new_query，降级 proceed")
         return AgentDecision(action="proceed", reason="planner_missing_query")
 
     # switch_route 必须带 new_route
     if action == "switch_route" and new_route is None:
-        logger.warning("agent planner switch_route 但无 new_route，降级 proceed：raw=%r", text)
+        logger.warning("agent planner action=switch_route 缺少 new_route，降级 proceed")
         return AgentDecision(action="proceed", reason="planner_missing_route")
 
-    return AgentDecision(action=action,  # type: ignore[arg-type]
-                         reason=reason,
-                         new_query=new_query,
-                         new_route=new_route,
-                         )
+    return AgentDecision(
+        action=action,  # type: ignore[arg-type]
+        reason=reason,
+        new_query=new_query,
+        new_route=new_route,
+    )
+
 
 def _extract_text(content: str | list[str | dict]) -> str:
-    """兼容 langchain ChatModel 的 content 联合类型"""
+    """兼容 langchain ChatModel 的 content 联合类型。"""
     if isinstance(content, str):
         return content
-    # 提取content中所有为dict的部分，且将key为text的部分拼成结果，没有返回空
     return "".join(part.get("text", "") for part in content if isinstance(part, dict))
-
-
-
-

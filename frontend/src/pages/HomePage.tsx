@@ -48,23 +48,25 @@ function CheckCard({ title, description, data, isLoading }: CheckCardProps) {
     </Card>
   )
 }
+
 export function HomePage() {
+  // client.ts 已开 throwOnError，非 2xx 会直接抛错被 react-query 捕获
   const appQuery = useQuery({
-    queryKey: ["health", "app"],
+    queryKey: ['health', 'app'],
     queryFn: async () => (await healthApp()).data,
-  });
+  })
   const dbQuery = useQuery({
-    queryKey: ["health", "db"],
+    queryKey: ['health', 'db'],
     queryFn: async () => (await healthDb()).data,
-  });
+  })
   const cosQuery = useQuery({
-    queryKey: ["health", "cos"],
+    queryKey: ['health', 'cos'],
     queryFn: async () => (await healthCos()).data,
-  });
+  })
 
   return (
     <div>
-      <Title level={3}>健康检查</Title>
+      <Title level={3}>第 2 章 · 健康检查</Title>
       <Paragraph type="secondary">
         三个状态卡片均显示"正常"即代表前后端、数据库、COS 全链路打通。
       </Paragraph>
@@ -95,5 +97,5 @@ export function HomePage() {
         </Col>
       </Row>
     </div>
-  );
+  )
 }

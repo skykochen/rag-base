@@ -1,4 +1,8 @@
-"""腾讯云 COS 客户端封装。"""
+"""腾讯云 COS 客户端封装。
+
+cos-python-sdk-v5 是同步 SDK；本项目要求 IO 一律 async，所以用 asyncio.to_thread
+把阻塞调用包成协程。后续章节再扩展 upload/download/get_url 等方法。
+"""
 
 import asyncio
 
@@ -13,6 +17,7 @@ logger = get_logger(__name__)
 
 
 class CosClient:
+    """腾讯云 COS 客户端单例封装。"""
 
     def __init__(self) -> None:
         if not settings.cos_configured:
@@ -33,8 +38,6 @@ class CosClient:
     @property
     def region(self) -> str:
         return settings.cos_region
-
-
 
     async def ping(self) -> bool:
         """通过 head_bucket 验证凭据与桶可达性。"""
@@ -70,6 +73,7 @@ class CosClient:
         await asyncio.to_thread(
             self._client.delete_object, Bucket=self._bucket, Key=key
         )
+
 
 _cos_client: CosClient | None = None
 

@@ -1,3 +1,5 @@
+"""文档相关请求 / 响应模型。"""
+
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -10,9 +12,12 @@ DocumentStatusValue = Literal["uploading", "parsing", "indexing", "ready", "fail
 IngestionTaskTypeValue = Literal["ingest", "reindex"]
 IngestionTaskStatusValue = Literal["pending", "running", "success", "failed"]
 
+# chunk 列表里只回截断后的摘要，避免长 chunk 撑爆响应；查看完整内容走详情接口
+_CONTENT_EXCERPT_LIMIT = 100
+
 
 class IngestionTaskRead(BaseModel):
-    """单条入库任务快照（详情页「最近一次任务」卡片用）。"""
+    """单条入库任务快照（详情页"最近一次任务"卡片用）。"""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -26,6 +31,7 @@ class IngestionTaskRead(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     created_at: datetime
+
 
 class DocumentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -55,8 +61,11 @@ class DocumentListResponse(BaseModel):
     page: int = Field(ge=1)
     page_size: int = Field(ge=1, le=100)
 
-# chunk 列表里只回截断后的摘要，避免长 chunk 撑爆响应；查看完整内容走详情接口
-_CONTENT_EXCERPT_LIMIT = 100
+
+class DocumentPermissionTagsUpdate(BaseModel):
+    """admin 改文档可见性标签的请求体。"""
+
+    permission_tags: list[str] = Field(default_factory=list)
 
 
 class DocumentChunkRead(BaseModel):
@@ -88,7 +97,7 @@ class DocumentChunkRead(BaseModel):
 
 
 class DocumentChunkStats(BaseModel):
-    """切分统计：直观看到 chunk_size / overlap 配置的实际效果。"""
+    """切分统计：展示 chunk_size / overlap 配置对切分结果的影响。"""
 
     total: int
     avg_length: int
@@ -102,6 +111,7 @@ class DocumentChunkListResponse(BaseModel):
     page: int = Field(ge=1)
     page_size: int = Field(ge=1, le=100)
     stats: DocumentChunkStats | None = None
+
 
 class DocumentChunkDetail(BaseModel):
     """chunk 详情：返回完整 content。"""
@@ -131,8 +141,3 @@ class DocumentChunkDetail(BaseModel):
             chunk_hash=chunk.chunk_hash,
             created_at=chunk.created_at,
         )
-
-class DocumentPermissionTagsUpdate(BaseModel):
-    """admin 改文档可见性标签的请求体。"""
-    permission_tags: list[str] = Field(default_factory=list)
-

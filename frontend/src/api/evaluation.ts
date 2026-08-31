@@ -1,23 +1,30 @@
+/**
+ * 评测相关 API 薄包装与 hooks。
+ *
+ * - 业务侧只 import 这里，不直接碰 @/client（项目工程约定）
+ * - running 状态的 run 自动 5 秒轮询，对齐第 3 章文档非终态轮询风格
+ */
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-    createEvaluationRun as sdkCreateEvaluationRun,
-    deleteEvaluationRun as sdkDeleteEvaluationRun,
-    getEvaluationRun as sdkGetEvaluationRun,
-    listEvaluationDatasets as sdkListEvaluationDatasets,
-    listEvaluationItems as sdkListEvaluationItems,
-    listEvaluationRuns as sdkListEvaluationRuns,
-    updateEvaluationItem as sdkUpdateEvaluationItem,
+  createEvaluationRun as sdkCreateEvaluationRun,
+  deleteEvaluationRun as sdkDeleteEvaluationRun,
+  getEvaluationRun as sdkGetEvaluationRun,
+  listEvaluationDatasets as sdkListEvaluationDatasets,
+  listEvaluationItems as sdkListEvaluationItems,
+  listEvaluationRuns as sdkListEvaluationRuns,
+  updateEvaluationItem as sdkUpdateEvaluationItem,
 } from '@/client/sdk.gen'
 import type {
-    EvaluationItemRead,
-    EvaluationItemUpdate,
-    EvaluationRunRead,
+  EvaluationItemRead,
+  EvaluationItemUpdate,
+  EvaluationRunRead,
 } from '@/client/types.gen'
 import {
-    evaluationDatasetsKey,
-    evaluationItemsKey,
-    evaluationRunKey,
-    evaluationRunsKey,
+  evaluationDatasetsKey,
+  evaluationItemsKey,
+  evaluationRunKey,
+  evaluationRunsKey,
 } from '@/api/queryKeys'
 
 type BadCaseCategory = NonNullable<EvaluationItemRead['bad_case_category']>
@@ -123,6 +130,7 @@ export function useUpdateEvaluationItem(runId: string) {
     onSuccess: () => {
       // items 列表的 query key 包含 filters，统一前缀 invalidate
       queryClient.invalidateQueries({ queryKey: ['evaluation-items', runId] })
+      // run 聚合指标本身不变，但 PATCH 后用户期望详情立即刷新
       queryClient.invalidateQueries({ queryKey: evaluationRunKey(runId) })
     },
   })

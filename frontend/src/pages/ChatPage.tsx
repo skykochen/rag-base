@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { gfmComponents } from '@/components/markdownComponents'
 import {
   Alert,
   Avatar,
   Button,
   Empty,
   Input,
+  Layout,
   Spin,
+  Tag,
   Typography,
   message as antdMessage,
 } from 'antd'
@@ -15,35 +16,31 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { createConversation, getConversation } from '@/client/sdk.gen'
-import { useAuthStore } from '@/stores/authStore'
 import type {
   AgentStep,
   CitationRead,
   MessageRead,
   QueryRouteRead,
-  VerifyResultRead
+  VerifyResultRead,
 } from '@/client/types.gen'
-
 import { streamChat, type ChatStreamEvent } from '@/api/chatStream'
-import { conversationsQueryKey} from "@/api/queryKeys";
-import { AgentStepsPanel} from "@/components/AgentStepsPanel";
-
+import { gfmComponents } from '@/components/markdownComponents'
+import { conversationsQueryKey } from '@/api/queryKeys'
+import { useAuthStore } from '@/stores/authStore'
+import { AgentStepsPanel } from '@/components/AgentStepsPanel'
 import { CitationList, type CitationListHandle } from '@/components/CitationList'
 import { ConversationSidebar } from '@/components/ConversationSidebar'
-
 import { QueryRoutePanel } from '@/components/QueryRoutePanel'
+import { TraceIdPanel } from '@/components/TraceIdPanel'
 import { formatApiError } from '@/utils/errors'
 
-import {Layout, Tag} from 'antd'
-import { TraceIdPanel } from '@/components/TraceIdPanel'
-
-const {Sider, Content} = Layout
-
-const REFUSAL_ANSWER = '抱歉，知识库中没有找到与该问题相关的可靠依据。'
-const {Text } = Typography
+const { Text } = Typography
 const { TextArea } = Input
+const { Sider, Content } = Layout
 
 const STORAGE_KEY_PREFIX = 'rag.chat.conversation_id'
+/** 与后端 REFUSAL_ANSWER 文案一致；用来判定历史消息是否拒答 */
+const REFUSAL_ANSWER = '抱歉，知识库中没有找到与该问题相关的可靠依据。'
 
 type AssistantStatus = 'streaming' | 'done' | 'error'
 
@@ -59,6 +56,7 @@ interface UiMessage {
   traceUrl?: string | null
   /** 语义缓存，true 表示本条 assistant 消息来自缓存命中 */
   cacheHit?: boolean
+  /** 仅用于"流式中"的 UI 状态，不来自后端 */
   refused?: boolean
   status?: AssistantStatus
   error?: string | null
@@ -76,10 +74,12 @@ function fromServerMessage(m: MessageRead): UiMessage {
     traceId: m.trace_id ?? null,
     traceUrl: m.trace_url ?? null,
     cacheHit: Boolean(m.cache_hit),
+    // 历史消息：直接按"内容是否等于固定拒答文案"判定，与后端 metadata.refused 等价
     refused: m.role === 'assistant' && m.content === REFUSAL_ANSWER,
     status: 'done',
   }
 }
+
 export function ChatPage() {
   const queryClient = useQueryClient()
   const userId = useAuthStore((s) => s.user?.id)
@@ -95,7 +95,7 @@ export function ChatPage() {
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-    // 创建会话：第一次进入页面 / 点"新建对话"时调用
+  // 创建会话：第一次进入页面 / 点"新建对话"时调用
   const createMutation = useMutation({
     mutationFn: async () => {
       const res = await createConversation({ body: { title: '新对话' } })
@@ -146,7 +146,7 @@ export function ChatPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [allMessages])
 
-  // 组件卸载或新建对话时取消进行中的请求
+  // 组件卸载时取消进行中的请求
   useEffect(() => {
     return () => {
       abortRef.current?.abort()
@@ -248,6 +248,7 @@ export function ChatPage() {
                   reason: event.reason,
                 }
                 if (!event.verified && event.replacementAnswer) {
+                  // 严格按 PRD：verify 失败时整段替换 + 清空引用 + 标 refused
                   return {
                     ...prev,
                     content: event.replacementAnswer,
@@ -256,16 +257,13 @@ export function ChatPage() {
                     verifyResult,
                   }
                 }
-                return {
-                  ...prev,
-                  verifyResult,
-                }
+                return { ...prev, verifyResult }
               })
               break
             case 'end':
               updateAssistant((prev) => ({
                 ...prev,
-                status: 'done' ,
+                status: 'done',
                 refused: prev.refused || event.refused,
               }))
               break
@@ -275,13 +273,11 @@ export function ChatPage() {
           }
         },
       })
-      // 流正常结束 → 用后端历史替换前端 pending
-      // await queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] })
+      // 流正常结束 → 用后端历史替换前端 pending；同时刷新侧栏（首次提问会改 title）
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] }),
         queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
       ])
-
     } catch (err) {
       const fallback = err instanceof Response ? await formatApiError(err) : (err as Error).message
       updateAssistant((prev) => ({
@@ -303,7 +299,7 @@ export function ChatPage() {
       handleSend()
     }
   }
-// ... existing code ...
+
   return (
     <Layout
       style={{
@@ -328,7 +324,14 @@ export function ChatPage() {
         />
       </Sider>
       <Content style={{ display: 'flex', flexDirection: 'column' }}>
-        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+        <div
+          ref={scrollRef}
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: 24,
+          }}
+        >
           {historyQuery.isLoading ? (
             <Spin />
           ) : allMessages.length === 0 ? (
@@ -337,6 +340,7 @@ export function ChatPage() {
             allMessages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
           )}
         </div>
+
         <div
           style={{
             padding: 12,
@@ -368,8 +372,6 @@ export function ChatPage() {
     </Layout>
   )
 }
-// ... existing code ...
-
 
 const CITATION_HASH_PREFIX = '#cite-'
 
@@ -379,12 +381,12 @@ const CITATION_HASH_PREFIX = '#cite-'
  * 链接文本用 `[[N]](url)` 这种"成对方括号嵌套"形式 CommonMark 解析最稳定。
  */
 function linkifyCitations(content: string, maxIndex: number, messageId: string): string {
-    if (maxIndex <= 0) return content
-    return content.replace(/\[(\d+)\]/g, (raw, num: string) => {
-        const n = Number(num)
-        if (n < 1 || n > maxIndex) return raw
-        return `[[${n}]](${CITATION_HASH_PREFIX}${messageId}-${n})`
-    })
+  if (maxIndex <= 0) return content
+  return content.replace(/\[(\d+)\]/g, (raw, num: string) => {
+    const n = Number(num)
+    if (n < 1 || n > maxIndex) return raw
+    return `[[${n}]](${CITATION_HASH_PREFIX}${messageId}-${n})`
+  })
 }
 
 function createMarkdownComponents(onCitationClick: (n: number) => void) {
@@ -407,53 +409,12 @@ function createMarkdownComponents(onCitationClick: (n: number) => void) {
       }
       return <a {...props} target="_blank" rel="noreferrer" />
     },
-    // 给 GFM 表格和 inline code 增加基础样式
     ...gfmComponents,
   }
 }
 
 interface MessageBubbleProps {
   message: UiMessage
-}
-/** assistant 气泡顶部状态条：拒答提示 + 校验结果 Tag/Alert。
- *
- * 优先级：拒答提示在最上（用户最关心"答案是否可信"），校验结果其次。
- * 拒答场景下不再单独展示 verify Alert，避免重复警告。
- */
-function AssistantHeader({ message }: { message: UiMessage }) {
-  if (message.refused) {
-    return (
-      <Alert
-        type="warning"
-        showIcon
-        message="未在知识库中找到可靠依据"
-        description={
-          message.verifyResult && message.verifyResult.verified === false
-            ? `答案校验未通过：${message.verifyResult.reason ?? '缺乏引用支撑'}，已替换为拒答提示`
-            : undefined
-        }
-        style={{ marginBottom: 8 }}
-      />
-    )
-  }
-  // 缓存命中与已校验是并列的状态指示，不互斥（命中场景下没有 verify，但允许同时展示）
-  const tags: React.ReactNode[] = []
-  if (message.cacheHit) {
-  tags.push(
-    <Tag key="cache" color="cyan">
-      缓存命中
-    </Tag>,
-   )
-  }
-  if (message.verifyResult?.verified === true) {
-    tags.push(
-      <Tag key="verified" color="green">
-        已校验
-      </Tag>,
-    )
-  }
-  if (tags.length === 0) return null
-  return <div style={{ marginBottom: 8 }}>{tags}</div>
 }
 
 function MessageBubble({ message }: MessageBubbleProps) {
@@ -505,14 +466,14 @@ function MessageBubble({ message }: MessageBubbleProps) {
             <Spin size="small" /> 正在思考...
           </Text>
         ) : null}
-        {!isUser && message.queryRoute ? (
-            <QueryRoutePanel queryRoute={message.queryRoute} />
-        ) : null}
         {!isUser && message.traceId ? (
-            <TraceIdPanel traceId={message.traceId} traceUrl={message.traceUrl} />
+          <TraceIdPanel traceId={message.traceId} traceUrl={message.traceUrl} />
+        ) : null}
+        {!isUser && message.queryRoute ? (
+          <QueryRoutePanel queryRoute={message.queryRoute} />
         ) : null}
         {!isUser && message.agentSteps && message.agentSteps.length > 0 ? (
-            <AgentStepsPanel steps={message.agentSteps} />
+          <AgentStepsPanel steps={message.agentSteps} />
         ) : null}
         {!isUser && message.citations.length > 0 ? (
           <CitationList ref={citationRef} citations={message.citations} messageId={message.id} />
@@ -522,3 +483,43 @@ function MessageBubble({ message }: MessageBubbleProps) {
   )
 }
 
+/** assistant 气泡顶部状态条：拒答提示 + 校验结果 Tag/Alert。
+ *
+ * 优先级：拒答提示在最上（用户最关心"答案是否可信"），校验结果其次。
+ * 拒答场景下不再单独展示 verify Alert，避免重复警告。
+ */
+function AssistantHeader({ message }: { message: UiMessage }) {
+  if (message.refused) {
+    return (
+      <Alert
+        type="warning"
+        showIcon
+        message="未在知识库中找到可靠依据"
+        description={
+          message.verifyResult && message.verifyResult.verified === false
+            ? `答案校验未通过：${message.verifyResult.reason ?? '缺乏引用支撑'}，已替换为拒答提示`
+            : undefined
+        }
+        style={{ marginBottom: 8 }}
+      />
+    )
+  }
+  // 缓存命中与已校验是并列的状态指示，不互斥（命中场景下没有 verify，但允许同时展示）
+  const tags: React.ReactNode[] = []
+  if (message.cacheHit) {
+    tags.push(
+      <Tag key="cache" color="cyan">
+        缓存命中
+      </Tag>,
+    )
+  }
+  if (message.verifyResult?.verified === true) {
+    tags.push(
+      <Tag key="verified" color="green">
+        已校验
+      </Tag>,
+    )
+  }
+  if (tags.length === 0) return null
+  return <div style={{ marginBottom: 8 }}>{tags}</div>
+}

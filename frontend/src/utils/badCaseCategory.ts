@@ -1,3 +1,9 @@
+/**
+ * Bad Case 12+1 类归因的中文标签映射。
+ *
+ * 拆出来不放组件文件：组件文件按 react-refresh 约定只导出组件。
+ */
+
 import type { BadCaseCategory } from '@/api/evaluation'
 
 export const BAD_CASE_CATEGORY_LABELS: Record<BadCaseCategory, string> = {

@@ -1,35 +1,42 @@
+/**
+ * 评测详情页：
+ * - 顶部 6 张指标卡（4 项 RAGAS + 引用命中 + 拒答正确）+ 平均耗时
+ * - 中部筛选（仅看 Bad Case + 按归因筛）
+ * - 下方 items 表格（点行展开 Drawer 查看 case 详情 + 编辑归因）
+ */
+
 import { useState } from 'react'
 import {
-    Alert,
-    App,
-    Button,
-    Card,
-    Col,
-    Drawer,
-    Form,
-    Input,
-    Row,
-    Space,
-    Switch,
-    Table,
-    Tag,
-    Typography,
+  Alert,
+  App,
+  Button,
+  Card,
+  Col,
+  Drawer,
+  Form,
+  Input,
+  Row,
+  Space,
+  Switch,
+  Table,
+  Tag,
+  Typography,
 } from 'antd'
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { Link, useParams } from 'react-router-dom'
 import {
-    type BadCaseCategory,
-    useEvaluationItems,
-    useEvaluationRun,
-    useUpdateEvaluationItem,
+  type BadCaseCategory,
+  useEvaluationItems,
+  useEvaluationRun,
+  useUpdateEvaluationItem,
 } from '@/api/evaluation'
 import type {
-    AgentStep,
-    CitationRead,
-    EvaluationItemRead,
-    QueryRouteRead,
-    VerifyResultRead,
+  AgentStep,
+  CitationRead,
+  EvaluationItemRead,
+  QueryRouteRead,
+  VerifyResultRead,
 } from '@/client/types.gen'
 import { MetricsCard } from '@/components/MetricsCard'
 import { BadCaseCategorySelect } from '@/components/BadCaseCategorySelect'
@@ -40,14 +47,15 @@ import { QueryRoutePanel } from '@/components/QueryRoutePanel'
 import { TraceIdPanel } from '@/components/TraceIdPanel'
 
 const { Paragraph, Text } = Typography
+
 function pct(v: number | null | undefined) {
-    if (v === null || v === undefined) return '—'
-    return `${(v * 100).toFixed(1)}%`
+  if (v === null || v === undefined) return '—'
+  return `${(v * 100).toFixed(1)}%`
 }
 
 function boolTag(v: boolean | null | undefined) {
-    if (v === null || v === undefined) return <Tag>—</Tag>
-    return v ? <Tag color="success">是</Tag> : <Tag color="error">否</Tag>
+  if (v === null || v === undefined) return <Tag>—</Tag>
+  return v ? <Tag color="success">是</Tag> : <Tag color="error">否</Tag>
 }
 
 export function EvaluationDetailPage() {
@@ -69,11 +77,35 @@ export function EvaluationDetailPage() {
 
   const columns: ColumnsType<EvaluationItemRead> = [
     { title: 'Case ID', dataIndex: 'case_id', width: 100 },
-    { title: 'Question', dataIndex: 'question', ellipsis: true },
-    { title: '应拒答', dataIndex: 'should_refuse', width: 80, render: boolTag },
-    { title: '实际拒答', dataIndex: 'actual_refused', width: 90, render: boolTag },
-    { title: '拒答正确', dataIndex: 'refusal_correct', width: 90, render: boolTag },
-    { title: '引用命中', dataIndex: 'citation_hit', width: 90, render: boolTag },
+    {
+      title: 'Question',
+      dataIndex: 'question',
+      ellipsis: true,
+    },
+    {
+      title: '应拒答',
+      dataIndex: 'should_refuse',
+      width: 80,
+      render: boolTag,
+    },
+    {
+      title: '实际拒答',
+      dataIndex: 'actual_refused',
+      width: 90,
+      render: boolTag,
+    },
+    {
+      title: '拒答正确',
+      dataIndex: 'refusal_correct',
+      width: 90,
+      render: boolTag,
+    },
+    {
+      title: '引用命中',
+      dataIndex: 'citation_hit',
+      width: 90,
+      render: boolTag,
+    },
     { title: 'Faith.', dataIndex: 'faithfulness', width: 80, render: pct },
     { title: 'Rel.', dataIndex: 'answer_relevancy', width: 80, render: pct },
     { title: 'Ctx P.', dataIndex: 'context_precision', width: 80, render: pct },
@@ -91,7 +123,6 @@ export function EvaluationDetailPage() {
     },
   ]
 
-
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
@@ -107,6 +138,7 @@ export function EvaluationDetailPage() {
           </Text>
         )}
       </Space>
+
       {run?.status === 'failed' && (
         <Alert
           type="error"
@@ -116,6 +148,7 @@ export function EvaluationDetailPage() {
           style={{ marginBottom: 16 }}
         />
       )}
+
       <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
         <Col xs={12} md={6}>
           <MetricsCard label="Faithfulness" value={run?.faithfulness} hint="答案被引用片段支撑的程度（RAGAS）" />
@@ -154,6 +187,7 @@ export function EvaluationDetailPage() {
           />
         </Col>
       </Row>
+
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
           <span>仅看 Bad Case：</span>
@@ -174,6 +208,7 @@ export function EvaluationDetailPage() {
           />
         </Space>
       </Card>
+
       <Table
         rowKey="id"
         loading={isLoading}
@@ -192,6 +227,7 @@ export function EvaluationDetailPage() {
         }}
         scroll={{ x: 1200 }}
       />
+
       <ItemDetailDrawer
         // item 切换时整个 Drawer 重新挂载，编辑态用 lazy init 一次性根据 item 初始化
         key={activeItem?.id ?? 'none'}
@@ -214,6 +250,8 @@ function ItemDetailDrawer({
 }) {
   const { message } = App.useApp()
   const mutation = useUpdateEvaluationItem(runId)
+  // 父组件用 key={item.id} 让 Drawer 在 item 切换时重新挂载，
+  // 因此这里 lazy init 一次拿到当前 item 的值即可，不需要 effect 同步
   const [note, setNote] = useState(() => item?.bad_case_note ?? '')
   const [editedCategory, setEditedCategory] = useState<BadCaseCategory | null>(
     () => item?.bad_case_category ?? null,
@@ -224,6 +262,7 @@ function ItemDetailDrawer({
   const queryRoute = item?.query_route as unknown as QueryRouteRead | null
   const agentSteps = (item?.agent_steps ?? null) as unknown as AgentStep[] | null
   const verifyResult = item?.verify_result as unknown as VerifyResultRead | null
+
   return (
     <Drawer
       open={Boolean(item)}
@@ -243,6 +282,7 @@ function ItemDetailDrawer({
               {item.should_refuse && <Tag color="orange">应拒答</Tag>}
             </Space>
           </Card>
+
           <Card size="small" title="期望答案" style={{ marginBottom: 12 }}>
             <Paragraph>{item.expected_answer || '—'}</Paragraph>
             <Space wrap size={4}>
@@ -267,6 +307,7 @@ function ItemDetailDrawer({
               )}
             </Space>
           </Card>
+
           <Card size="small" title="实际回答" style={{ marginBottom: 12 }}>
             {item.error_message ? (
               <Alert type="error" message="执行异常" description={item.error_message} />
@@ -300,6 +341,7 @@ function ItemDetailDrawer({
               )}
             </Space>
           </Card>
+
           <Card size="small" title="指标与归因">
             <Row gutter={[8, 8]} style={{ marginBottom: 12 }}>
               <Col span={12}>
@@ -327,6 +369,7 @@ function ItemDetailDrawer({
                 {boolTag(item.refusal_correct)}
               </Col>
             </Row>
+
             <Form layout="vertical">
               <Form.Item label="是 Bad Case">
                 <Switch

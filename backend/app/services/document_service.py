@@ -1,36 +1,44 @@
-import chunk
+"""文档管理业务动作：上传、查询、列表、改权限标签、重新索引。
+
+第 11 章：所有读接口透传 permission_tags 做可见性过滤；上传 / 删除 / 重试 / 改标签由
+路由层用 CurrentAdmin 强约束（admin 视角调用 service 时传 permission_tags=None）。
+
+第 12 章：解析 / embedding / 入库任务移交 Celery；service 落库 ingestion_tasks
+后只负责调 `.delay`，由 worker 真正执行 pipeline。
+"""
+
 import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import PurePath
-
-from app.services.role_service import _normalize_tags
 from uuid import UUID
 
-# from fastapi import BackgroundTasks, UploadFile
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.logging import get_logger
-from app.db.models import Document, DocumentChunk, DocumentStatus, IngestionTaskType, IngestionTask
+from app.db.models import (
+    Document,
+    DocumentChunk,
+    DocumentStatus,
+    IngestionTask,
+    IngestionTaskType,
+)
 from app.db.repositories.chunk_repo import (
     ChunkStats,
     DocumentChunkRepository,
 )
 from app.db.repositories.document_repo import DocumentRepository
-from app.ingestion.pipeline import ingest_document
-
-from app.storage.file_service import FileService, get_file_service
 from app.db.repositories.ingestion_task_repo import IngestionTaskRepository
 from app.ingestion.tasks import ingest_document_task, reindex_document_task
+from app.storage.file_service import FileService, get_file_service
 
+logger = get_logger(__name__)
 
-
-
-# 受支持的 MIME 类型。docling 还支持其他格式，本章先收敛为常见四种以便课件演示
+# 受支持的 MIME 类型。Docling 还支持其他格式，本章先收敛为常见四种以便课件演示
 _ACCEPTED_MIME_TYPES: dict[str, str] = {
     "application/pdf": ".pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
@@ -48,18 +56,6 @@ _ACCEPTED_SUFFIXES: dict[str, str] = {
     ".html": "text/html",
     ".htm": "text/html",
 }
-
-@dataclass(frozen=True)
-class KnowledgeBaseStats:
-    """知识库整体规模快照，按调用者权限范围统计。
-
-    chunk_count 仅计入 status='ready' 的文档，与检索可见性一致；
-    last_indexed_at 取最近一次 ready 文档的 updated_at（含 reindex 后的刷新）。
-    """
-    document_count: int
-    chunk_count: int
-    last_indexed_at: datetime | None
-
 
 
 def _resolve_mime_and_suffix(file: UploadFile) -> tuple[str, str]:
@@ -80,31 +76,58 @@ def _resolve_mime_and_suffix(file: UploadFile) -> tuple[str, str]:
         "当前仅支持 PDF、DOCX、Markdown、HTML"
     )
 
+
 # 删除允许的状态：终态 + uploading（uploading 时后台任务还没真正写 chunks）
 _DELETABLE_STATUSES = frozenset(
     {DocumentStatus.READY, DocumentStatus.FAILED, DocumentStatus.UPLOADING}
 )
 
 
-logger = get_logger(__name__)
+@dataclass(frozen=True)
+class KnowledgeBaseStats:
+    """知识库整体规模快照，按调用者权限范围统计。
+
+    chunk_count 仅计入 status='ready' 的文档，与检索可见性一致；
+    last_indexed_at 取最近一次 ready 文档的 updated_at（含 reindex 后的刷新）。
+    """
+
+    document_count: int
+    chunk_count: int
+    last_indexed_at: datetime | None
+
+
+def _normalize_tags(tags: Sequence[str] | None) -> list[str]:
+    """去空白、去空串、去重；None 视为空数组。"""
+    if not tags:
+        return []
+    seen: set[str] = set()
+    result: list[str] = []
+    for tag in tags:
+        t = tag.strip()
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        result.append(t)
+    return result
+
 
 class DocumentService:
     def __init__(self, session: AsyncSession, file_service: FileService | None = None) -> None:
         self.session = session
         self.repo = DocumentRepository(session)
-        self.task_repo = IngestionTaskRepository(session)
         self.chunk_repo = DocumentChunkRepository(session)
+        self.task_repo = IngestionTaskRepository(session)
         self.file_service = file_service or get_file_service()
 
     async def upload(
-            self,
-            file: UploadFile,
-            # background_tasks: BackgroundTasks,
-            *,
-            created_by: UUID | None = None,
-            permission_tags: list[str] | None = None,
+        self,
+        file: UploadFile,
+        *,
+        created_by: UUID | None = None,
+        permission_tags: Sequence[str] | None = None,
     ) -> Document:
         mime_type, suffix = _resolve_mime_and_suffix(file)
+
         content = await file.read()
         max_bytes = settings.upload_max_size_mb * 1024 * 1024
         if len(content) == 0:
@@ -138,40 +161,23 @@ class DocumentService:
             cos_region=self.file_service.region,
             status=DocumentStatus.UPLOADING,
             permission_tags=_normalize_tags(permission_tags),
-            created_by=created_by
+            created_by=created_by,
         )
         await self.repo.add(document)
         task = await self.task_repo.create(document.id, IngestionTaskType.INGEST)
-
         await self.session.commit()
         await self.session.refresh(document)
 
-        # # 推进到后台任务前 commit，确保 ingest pipeline 用独立 session 也能查到
-        # background_tasks.add_task(ingest_document, document.id)
         # commit 之后 Celery worker 用独立 session 才能查到刚落库的 document / task
         ingest_document_task.delay(str(document.id), str(task.id))
 
         return document
 
-    async def update_permission_tags(
-            self,
-            document_id: UUID,
-            tags: Sequence[str]
-    ) -> Document:
-        """admin 修改文档可见性标签。"""
-        doc = await self.repo.get_by_id(document_id)
-        if doc is None:
-            raise NotFoundError("文档不存在")
-        doc.permission_tags = _normalize_tags(tags)
-        await self.session.commit()
-        await self.session.refresh(doc)
-        return doc
-
     async def get(
-            self,
-            document_id: UUID,
-            *,
-            permission_tags: list[str] | None = None,
+        self,
+        document_id: UUID,
+        *,
+        permission_tags: list[str] | None = None,
     ) -> Document:
         doc = await self.repo.get_by_id(document_id, permission_tags=permission_tags)
         if doc is None:
@@ -186,31 +192,9 @@ class DocumentService:
         status: DocumentStatus | None = None,
         permission_tags: list[str] | None = None,
     ) -> tuple[list[Document], int]:
-        return await self.repo.list_paginated(page, page_size, status=status, permission_tags=permission_tags)
-
-    async def list_chunks(
-        self,
-        document_id: UUID,
-        page: int,
-        page_size: int,
-        *,
-        permission_tags: list[str] | None = None,
-    ) -> tuple[list[DocumentChunk], int, ChunkStats | None]:
-        # 先确保 document 存在，否则空文档与"文档不存在"会混在一起
-        await self.get(document_id, permission_tags=permission_tags)
-        items, total = await self.chunk_repo.list_paginated_by_document(
-            document_id, page, page_size
+        return await self.repo.list_paginated(
+            page, page_size, status=status, permission_tags=permission_tags
         )
-        stats = await self.chunk_repo.get_stats(document_id)
-        return items, total, stats
-
-    async def get_chunk(self, document_id: UUID, chunk_id: UUID, *, permission_tags: list[str] | None = None) -> DocumentChunk:
-        # 双重校验：先确保用户能看到 document，再校验 chunk 归属
-        await self.get(document_id, permission_tags=permission_tags)
-        chunk = await self.chunk_repo.get_for_document(document_id, chunk_id)
-        if chunk is None:
-            raise NotFoundError("Chunk 不存在")
-        return chunk
 
     async def delete(self, document_id: UUID) -> None:
         """删除文档。
@@ -248,21 +232,15 @@ class DocumentService:
         await self.session.commit()
         await self.session.refresh(doc)
 
-        # background_tasks.add_task(ingest_document, doc.id)
         ingest_document_task.delay(str(doc.id), str(task.id))
-
         logger.info("document retry scheduled: id=%s", document_id)
         return doc
 
-
-
-
-
     async def reindex(
-            self,
-            document_id: UUID,
-            file: UploadFile,
-        ) -> Document:
+        self,
+        document_id: UUID,
+        file: UploadFile,
+    ) -> Document:
         """用新文件替换原文档并触发增量重建。
 
         - 只允许 READY / FAILED 状态触发，避免与正在进行的 ingest 抢资源
@@ -279,11 +257,12 @@ class DocumentService:
 
         mime_type, suffix = _resolve_mime_and_suffix(file)
         if mime_type != doc.mime_type:
-            raise ValidationError("文件类型与原文档不一致")
+            raise ValidationError(
+                f"新版本文件类型必须与原文档一致（当前为 {doc.mime_type}）"
+            )
 
         content = await file.read()
         max_bytes = settings.upload_max_size_mb * 1024 * 1024
-
         if len(content) == 0:
             raise ValidationError("上传文件为空")
         if len(content) > max_bytes:
@@ -291,8 +270,11 @@ class DocumentService:
 
         new_hash = hashlib.sha256(content).hexdigest()
         if new_hash == doc.file_hash:
-            raise ValidationError("文件内容与原文档相同,不需重新索引")
+            # 内容完全一致没有重建必要，避免重复上传相同内容浪费 embedding 配额
+            raise ValidationError("文件内容与现有版本一致，无需重新索引")
 
+        # 把新文件覆盖到同一个 object key：reindex 失败时 worker 不动版本号，
+        # 但 COS 已经是新内容——这是教学项目可接受的取舍（避免引入文件版本表）
         new_object_key = await self.file_service.upload(
             content=content,
             file_hash=new_hash,
@@ -321,10 +303,39 @@ class DocumentService:
     async def get_latest_task(self, document_id: UUID) -> IngestionTask | None:
         return await self.task_repo.get_latest_by_document(document_id)
 
-    async def get_stats(self,
-                        *,
-                        permission_tags: list[str] | None = None,
-                        ) -> KnowledgeBaseStats:
+    async def update_permission_tags(
+        self, document_id: UUID, tags: Sequence[str]
+    ) -> Document:
+        """admin 修改文档可见性标签。"""
+        doc = await self.repo.get_by_id(document_id)
+        if doc is None:
+            raise NotFoundError("文档不存在")
+        doc.permission_tags = _normalize_tags(tags)
+        await self.session.commit()
+        await self.session.refresh(doc)
+        return doc
+
+    async def list_chunks(
+        self,
+        document_id: UUID,
+        page: int,
+        page_size: int,
+        *,
+        permission_tags: list[str] | None = None,
+    ) -> tuple[list[DocumentChunk], int, ChunkStats | None]:
+        # 先确保 document 存在 + 当前用户可见
+        await self.get(document_id, permission_tags=permission_tags)
+        items, total = await self.chunk_repo.list_paginated_by_document(
+            document_id, page, page_size
+        )
+        stats = await self.chunk_repo.get_stats(document_id)
+        return items, total, stats
+
+    async def get_stats(
+        self,
+        *,
+        permission_tags: list[str] | None = None,
+    ) -> KnowledgeBaseStats:
         """聚合 documents / chunks 总数与最新入库时间。
 
         permission_tags：admin 视角传 None 不限；普通用户传合并后的有效标签，
@@ -343,9 +354,16 @@ class DocumentService:
             last_indexed_at=last_indexed_at,
         )
 
-
-
-
-
-
-
+    async def get_chunk(
+        self,
+        document_id: UUID,
+        chunk_id: UUID,
+        *,
+        permission_tags: list[str] | None = None,
+    ) -> DocumentChunk:
+        # 双重校验：先确保用户能看到 document，再校验 chunk 归属
+        await self.get(document_id, permission_tags=permission_tags)
+        chunk = await self.chunk_repo.get_for_document(document_id, chunk_id)
+        if chunk is None:
+            raise NotFoundError("Chunk 不存在")
+        return chunk

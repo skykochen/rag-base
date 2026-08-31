@@ -231,6 +231,8 @@ export type ConversationRead = {
 
 /**
  * DatasetInfo
+ *
+ * 评测集列表元素：name + size。
  */
 export type DatasetInfo = {
     /**
@@ -359,7 +361,7 @@ export type DocumentChunkRead = {
 /**
  * DocumentChunkStats
  *
- * 切分统计：直观看到 chunk_size / overlap 配置的实际效果。
+ * 切分统计：展示 chunk_size / overlap 配置对切分结果的影响。
  */
 export type DocumentChunkStats = {
     /**
@@ -883,7 +885,7 @@ export type HealthStatus = {
 /**
  * IngestionTaskRead
  *
- * 单条入库任务快照（详情页「最近一次任务」卡片用）。
+ * 单条入库任务快照（详情页"最近一次任务"卡片用）。
  */
 export type IngestionTaskRead = {
     /**
@@ -1028,6 +1030,8 @@ export type MessageRead = {
 
 /**
  * QueryRouteRead
+ *
+ * Query 优化的调试快照。仅 assistant 消息会带，前端用于渲染调试面板。
  */
 export type QueryRouteRead = {
     /**
@@ -1041,15 +1045,15 @@ export type QueryRouteRead = {
     /**
      * Rewritten Query
      */
-    rewritten_query: string | null;
+    rewritten_query?: string | null;
     /**
      * Hyde Answer
      */
-    hyde_answer: string | null;
+    hyde_answer?: string | null;
     /**
      * Multi Queries
      */
-    multi_queries: Array<string> | null;
+    multi_queries?: Array<string> | null;
 };
 
 /**
@@ -1062,6 +1066,8 @@ export type QueryRouteRead = {
  * - vector_score：cosine similarity，绝对值有意义，做拒答阈值用
  * - keyword_score：ts_rank，相对值，跨 query 不可比
  * - rrf_score：两路融合分，仅在同一次检索内可比
+ * - rerank_score：第 8 章 reranker 精排分（qwen3-rerank ∈ [0, 1]）；
+ * 未开启 / 历史消息为 None
  */
 export type RetrievalMeta = {
     /**
@@ -1073,13 +1079,13 @@ export type RetrievalMeta = {
      */
     vector_rank?: number | null;
     /**
-     * Keyword Rank
-     */
-    keyword_rank?: number | null;
-    /**
      * Vector Score
      */
     vector_score?: number | null;
+    /**
+     * Keyword Rank
+     */
+    keyword_rank?: number | null;
     /**
      * Keyword Score
      */
@@ -1300,7 +1306,7 @@ export type VerifyResultRead = {
     /**
      * Reason
      */
-    reason: string | null;
+    reason?: string | null;
 };
 
 export type HealthAppData = {
@@ -1350,853 +1356,6 @@ export type HealthCosResponses = {
 };
 
 export type HealthCosResponse = HealthCosResponses[keyof HealthCosResponses];
-
-export type ListDocumentsData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path?: never;
-    query?: {
-        /**
-         * Page
-         */
-        page?: number;
-        /**
-         * Page Size
-         */
-        page_size?: number;
-        /**
-         * Status
-         *
-         * 按文档状态筛选
-         */
-        status?: 'uploading' | 'parsing' | 'indexing' | 'ready' | 'failed' | null;
-    };
-    url: '/api/documents';
-};
-
-export type ListDocumentsErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type ListDocumentsError = ListDocumentsErrors[keyof ListDocumentsErrors];
-
-export type ListDocumentsResponses = {
-    /**
-     * Successful Response
-     */
-    200: DocumentListResponse;
-};
-
-export type ListDocumentsResponse = ListDocumentsResponses[keyof ListDocumentsResponses];
-
-export type UploadDocumentData = {
-    body: BodyUploadDocument;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/documents';
-};
-
-export type UploadDocumentErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type UploadDocumentError = UploadDocumentErrors[keyof UploadDocumentErrors];
-
-export type UploadDocumentResponses = {
-    /**
-     * Successful Response
-     */
-    201: DocumentRead;
-};
-
-export type UploadDocumentResponse = UploadDocumentResponses[keyof UploadDocumentResponses];
-
-export type DeleteDocumentData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Document Id
-         */
-        document_id: string;
-    };
-    query?: never;
-    url: '/api/documents/{document_id}';
-};
-
-export type DeleteDocumentErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type DeleteDocumentError = DeleteDocumentErrors[keyof DeleteDocumentErrors];
-
-export type DeleteDocumentResponses = {
-    /**
-     * Successful Response
-     */
-    204: void;
-};
-
-export type DeleteDocumentResponse = DeleteDocumentResponses[keyof DeleteDocumentResponses];
-
-export type GetDocumentData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Document Id
-         */
-        document_id: string;
-    };
-    query?: never;
-    url: '/api/documents/{document_id}';
-};
-
-export type GetDocumentErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetDocumentError = GetDocumentErrors[keyof GetDocumentErrors];
-
-export type GetDocumentResponses = {
-    /**
-     * Successful Response
-     */
-    200: DocumentRead;
-};
-
-export type GetDocumentResponse = GetDocumentResponses[keyof GetDocumentResponses];
-
-export type RetryDocumentData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Document Id
-         */
-        document_id: string;
-    };
-    query?: never;
-    url: '/api/documents/{document_id}/retry';
-};
-
-export type RetryDocumentErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type RetryDocumentError = RetryDocumentErrors[keyof RetryDocumentErrors];
-
-export type RetryDocumentResponses = {
-    /**
-     * Successful Response
-     */
-    200: DocumentRead;
-};
-
-export type RetryDocumentResponse = RetryDocumentResponses[keyof RetryDocumentResponses];
-
-export type DownloadDocumentData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Document Id
-         */
-        document_id: string;
-    };
-    query?: {
-        /**
-         * Download
-         *
-         * 1=强制下载, 0=尝试内联预览
-         */
-        download?: number;
-        /**
-         * Token
-         *
-         * Bearer token（iframe/新窗口无法带 header 时使用）
-         */
-        token?: string | null;
-    };
-    url: '/api/documents/{document_id}/file';
-};
-
-export type DownloadDocumentErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type DownloadDocumentError = DownloadDocumentErrors[keyof DownloadDocumentErrors];
-
-export type DownloadDocumentResponses = {
-    /**
-     * Successful Response
-     */
-    200: unknown;
-};
-
-export type ListDocumentChunksData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Document Id
-         */
-        document_id: string;
-    };
-    query?: {
-        /**
-         * Page
-         */
-        page?: number;
-        /**
-         * Page Size
-         */
-        page_size?: number;
-    };
-    url: '/api/documents/{document_id}/chunks';
-};
-
-export type ListDocumentChunksErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type ListDocumentChunksError = ListDocumentChunksErrors[keyof ListDocumentChunksErrors];
-
-export type ListDocumentChunksResponses = {
-    /**
-     * Successful Response
-     */
-    200: DocumentChunkListResponse;
-};
-
-export type ListDocumentChunksResponse = ListDocumentChunksResponses[keyof ListDocumentChunksResponses];
-
-export type GetDocumentChunkData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Document Id
-         */
-        document_id: string;
-        /**
-         * Chunk Id
-         */
-        chunk_id: string;
-    };
-    query?: never;
-    url: '/api/documents/{document_id}/chunks/{chunk_id}';
-};
-
-export type GetDocumentChunkErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetDocumentChunkError = GetDocumentChunkErrors[keyof GetDocumentChunkErrors];
-
-export type GetDocumentChunkResponses = {
-    /**
-     * Successful Response
-     */
-    200: DocumentChunkDetail;
-};
-
-export type GetDocumentChunkResponse = GetDocumentChunkResponses[keyof GetDocumentChunkResponses];
-
-export type UpdateDocumentPermissionTagsData = {
-    body: DocumentPermissionTagsUpdate;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Document Id
-         */
-        document_id: string;
-    };
-    query?: never;
-    url: '/api/documents/{document_id}/permission-tags';
-};
-
-export type UpdateDocumentPermissionTagsErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type UpdateDocumentPermissionTagsError = UpdateDocumentPermissionTagsErrors[keyof UpdateDocumentPermissionTagsErrors];
-
-export type UpdateDocumentPermissionTagsResponses = {
-    /**
-     * Successful Response
-     */
-    200: DocumentRead;
-};
-
-export type UpdateDocumentPermissionTagsResponse = UpdateDocumentPermissionTagsResponses[keyof UpdateDocumentPermissionTagsResponses];
-
-export type ReindexDocumentData = {
-    body: BodyReindexDocument;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Document Id
-         */
-        document_id: string;
-    };
-    query?: never;
-    url: '/api/documents/{document_id}/reindex';
-};
-
-export type ReindexDocumentErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type ReindexDocumentError = ReindexDocumentErrors[keyof ReindexDocumentErrors];
-
-export type ReindexDocumentResponses = {
-    /**
-     * Successful Response
-     */
-    200: DocumentRead;
-};
-
-export type ReindexDocumentResponse = ReindexDocumentResponses[keyof ReindexDocumentResponses];
-
-export type ListConversationsData = {
-    body?: never;
-    path?: never;
-    query?: {
-        /**
-         * Page
-         */
-        page?: number;
-        /**
-         * Page Size
-         */
-        page_size?: number;
-    };
-    url: '/api/conversations';
-};
-
-export type ListConversationsErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type ListConversationsError = ListConversationsErrors[keyof ListConversationsErrors];
-
-export type ListConversationsResponses = {
-    /**
-     * Successful Response
-     */
-    200: ConversationPage;
-};
-
-export type ListConversationsResponse = ListConversationsResponses[keyof ListConversationsResponses];
-
-export type CreateConversationData = {
-    body: ConversationCreate;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/conversations';
-};
-
-export type CreateConversationErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type CreateConversationError = CreateConversationErrors[keyof CreateConversationErrors];
-
-export type CreateConversationResponses = {
-    /**
-     * Successful Response
-     */
-    201: ConversationRead;
-};
-
-export type CreateConversationResponse = CreateConversationResponses[keyof CreateConversationResponses];
-
-export type DeleteConversationData = {
-    body?: never;
-    path: {
-        /**
-         * Conversation Id
-         */
-        conversation_id: string;
-    };
-    query?: never;
-    url: '/api/conversations/{conversation_id}';
-};
-
-export type DeleteConversationErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type DeleteConversationError = DeleteConversationErrors[keyof DeleteConversationErrors];
-
-export type DeleteConversationResponses = {
-    /**
-     * Successful Response
-     */
-    204: void;
-};
-
-export type DeleteConversationResponse = DeleteConversationResponses[keyof DeleteConversationResponses];
-
-export type GetConversationData = {
-    body?: never;
-    path: {
-        /**
-         * Conversation Id
-         */
-        conversation_id: string;
-    };
-    query?: never;
-    url: '/api/conversations/{conversation_id}';
-};
-
-export type GetConversationErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetConversationError = GetConversationErrors[keyof GetConversationErrors];
-
-export type GetConversationResponses = {
-    /**
-     * Successful Response
-     */
-    200: ConversationDetail;
-};
-
-export type GetConversationResponse = GetConversationResponses[keyof GetConversationResponses];
-
-export type StreamChatData = {
-    body: ChatRequest;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Conversation Id
-         */
-        conversation_id: string;
-    };
-    query?: never;
-    url: '/api/conversations/{conversation_id}/chat';
-};
-
-export type StreamChatErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type StreamChatError = StreamChatErrors[keyof StreamChatErrors];
-
-export type StreamChatResponses = {
-    /**
-     * Successful Response
-     */
-    200: unknown;
-};
-
-export type ListEvaluationDatasetsData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/evaluations/datasets';
-};
-
-export type ListEvaluationDatasetsErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type ListEvaluationDatasetsError = ListEvaluationDatasetsErrors[keyof ListEvaluationDatasetsErrors];
-
-export type ListEvaluationDatasetsResponses = {
-    /**
-     * Successful Response
-     */
-    200: DatasetListResponse;
-};
-
-export type ListEvaluationDatasetsResponse = ListEvaluationDatasetsResponses[keyof ListEvaluationDatasetsResponses];
-
-export type ListEvaluationRunsData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path?: never;
-    query?: {
-        /**
-         * Page
-         */
-        page?: number;
-        /**
-         * Page Size
-         */
-        page_size?: number;
-    };
-    url: '/api/evaluations/runs';
-};
-
-export type ListEvaluationRunsErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type ListEvaluationRunsError = ListEvaluationRunsErrors[keyof ListEvaluationRunsErrors];
-
-export type ListEvaluationRunsResponses = {
-    /**
-     * Successful Response
-     */
-    200: EvaluationRunPage;
-};
-
-export type ListEvaluationRunsResponse = ListEvaluationRunsResponses[keyof ListEvaluationRunsResponses];
-
-export type CreateEvaluationRunData = {
-    body: EvaluationRunCreate;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/evaluations/runs';
-};
-
-export type CreateEvaluationRunErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type CreateEvaluationRunError = CreateEvaluationRunErrors[keyof CreateEvaluationRunErrors];
-
-export type CreateEvaluationRunResponses = {
-    /**
-     * Successful Response
-     */
-    201: EvaluationRunRead;
-};
-
-export type CreateEvaluationRunResponse = CreateEvaluationRunResponses[keyof CreateEvaluationRunResponses];
-
-export type DeleteEvaluationRunData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Run Id
-         */
-        run_id: string;
-    };
-    query?: never;
-    url: '/api/evaluations/runs/{run_id}';
-};
-
-export type DeleteEvaluationRunErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type DeleteEvaluationRunError = DeleteEvaluationRunErrors[keyof DeleteEvaluationRunErrors];
-
-export type DeleteEvaluationRunResponses = {
-    /**
-     * Successful Response
-     */
-    204: void;
-};
-
-export type DeleteEvaluationRunResponse = DeleteEvaluationRunResponses[keyof DeleteEvaluationRunResponses];
-
-export type GetEvaluationRunData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Run Id
-         */
-        run_id: string;
-    };
-    query?: never;
-    url: '/api/evaluations/runs/{run_id}';
-};
-
-export type GetEvaluationRunErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetEvaluationRunError = GetEvaluationRunErrors[keyof GetEvaluationRunErrors];
-
-export type GetEvaluationRunResponses = {
-    /**
-     * Successful Response
-     */
-    200: EvaluationRunRead;
-};
-
-export type GetEvaluationRunResponse = GetEvaluationRunResponses[keyof GetEvaluationRunResponses];
-
-export type ListEvaluationItemsData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Run Id
-         */
-        run_id: string;
-    };
-    query?: {
-        /**
-         * Page
-         */
-        page?: number;
-        /**
-         * Page Size
-         */
-        page_size?: number;
-        /**
-         * Bad Case Only
-         */
-        bad_case_only?: boolean;
-        /**
-         * Category
-         */
-        category?: 'document_parse_failed' | 'chunk_split_bad' | 'embedding_recall_miss' | 'keyword_recall_miss' | 'rrf_fusion_error' | 'rerank_order_error' | 'context_judge_too_loose' | 'context_judge_too_strict' | 'prompt_constraint_weak' | 'generation_off_context' | 'citation_parse_failed' | 'permission_filter_error' | 'other' | null;
-    };
-    url: '/api/evaluations/runs/{run_id}/items';
-};
-
-export type ListEvaluationItemsErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type ListEvaluationItemsError = ListEvaluationItemsErrors[keyof ListEvaluationItemsErrors];
-
-export type ListEvaluationItemsResponses = {
-    /**
-     * Successful Response
-     */
-    200: EvaluationItemPage;
-};
-
-export type ListEvaluationItemsResponse = ListEvaluationItemsResponses[keyof ListEvaluationItemsResponses];
-
-export type GetEvaluationItemData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Item Id
-         */
-        item_id: string;
-    };
-    query?: never;
-    url: '/api/evaluations/items/{item_id}';
-};
-
-export type GetEvaluationItemErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetEvaluationItemError = GetEvaluationItemErrors[keyof GetEvaluationItemErrors];
-
-export type GetEvaluationItemResponses = {
-    /**
-     * Successful Response
-     */
-    200: EvaluationItemRead;
-};
-
-export type GetEvaluationItemResponse = GetEvaluationItemResponses[keyof GetEvaluationItemResponses];
-
-export type UpdateEvaluationItemData = {
-    body: EvaluationItemUpdate;
-    headers?: {
-        /**
-         * Authorization
-         */
-        Authorization?: string | null;
-    };
-    path: {
-        /**
-         * Item Id
-         */
-        item_id: string;
-    };
-    query?: never;
-    url: '/api/evaluations/items/{item_id}';
-};
-
-export type UpdateEvaluationItemErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type UpdateEvaluationItemError = UpdateEvaluationItemErrors[keyof UpdateEvaluationItemErrors];
-
-export type UpdateEvaluationItemResponses = {
-    /**
-     * Successful Response
-     */
-    200: EvaluationItemRead;
-};
-
-export type UpdateEvaluationItemResponse = UpdateEvaluationItemResponses[keyof UpdateEvaluationItemResponses];
 
 export type LoginData = {
     body: LoginRequest;
@@ -2568,3 +1727,862 @@ export type UpdateRoleResponses = {
 };
 
 export type UpdateRoleResponse = UpdateRoleResponses[keyof UpdateRoleResponses];
+
+export type ListDocumentsData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+        /**
+         * Status
+         *
+         * 按文档状态筛选
+         */
+        status?: 'uploading' | 'parsing' | 'indexing' | 'ready' | 'failed' | null;
+    };
+    url: '/api/documents';
+};
+
+export type ListDocumentsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListDocumentsError = ListDocumentsErrors[keyof ListDocumentsErrors];
+
+export type ListDocumentsResponses = {
+    /**
+     * Successful Response
+     */
+    200: DocumentListResponse;
+};
+
+export type ListDocumentsResponse = ListDocumentsResponses[keyof ListDocumentsResponses];
+
+export type UploadDocumentData = {
+    body: BodyUploadDocument;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/documents';
+};
+
+export type UploadDocumentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UploadDocumentError = UploadDocumentErrors[keyof UploadDocumentErrors];
+
+export type UploadDocumentResponses = {
+    /**
+     * Successful Response
+     */
+    201: DocumentRead;
+};
+
+export type UploadDocumentResponse = UploadDocumentResponses[keyof UploadDocumentResponses];
+
+export type DeleteDocumentData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: never;
+    url: '/api/documents/{document_id}';
+};
+
+export type DeleteDocumentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteDocumentError = DeleteDocumentErrors[keyof DeleteDocumentErrors];
+
+export type DeleteDocumentResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteDocumentResponse = DeleteDocumentResponses[keyof DeleteDocumentResponses];
+
+export type GetDocumentData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: never;
+    url: '/api/documents/{document_id}';
+};
+
+export type GetDocumentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetDocumentError = GetDocumentErrors[keyof GetDocumentErrors];
+
+export type GetDocumentResponses = {
+    /**
+     * Successful Response
+     */
+    200: DocumentRead;
+};
+
+export type GetDocumentResponse = GetDocumentResponses[keyof GetDocumentResponses];
+
+export type RetryDocumentData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: never;
+    url: '/api/documents/{document_id}/retry';
+};
+
+export type RetryDocumentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RetryDocumentError = RetryDocumentErrors[keyof RetryDocumentErrors];
+
+export type RetryDocumentResponses = {
+    /**
+     * Successful Response
+     */
+    200: DocumentRead;
+};
+
+export type RetryDocumentResponse = RetryDocumentResponses[keyof RetryDocumentResponses];
+
+export type ReindexDocumentData = {
+    body: BodyReindexDocument;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: never;
+    url: '/api/documents/{document_id}/reindex';
+};
+
+export type ReindexDocumentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReindexDocumentError = ReindexDocumentErrors[keyof ReindexDocumentErrors];
+
+export type ReindexDocumentResponses = {
+    /**
+     * Successful Response
+     */
+    200: DocumentRead;
+};
+
+export type ReindexDocumentResponse = ReindexDocumentResponses[keyof ReindexDocumentResponses];
+
+export type UpdateDocumentPermissionTagsData = {
+    body: DocumentPermissionTagsUpdate;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: never;
+    url: '/api/documents/{document_id}/permission-tags';
+};
+
+export type UpdateDocumentPermissionTagsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateDocumentPermissionTagsError = UpdateDocumentPermissionTagsErrors[keyof UpdateDocumentPermissionTagsErrors];
+
+export type UpdateDocumentPermissionTagsResponses = {
+    /**
+     * Successful Response
+     */
+    200: DocumentRead;
+};
+
+export type UpdateDocumentPermissionTagsResponse = UpdateDocumentPermissionTagsResponses[keyof UpdateDocumentPermissionTagsResponses];
+
+export type DownloadDocumentData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: {
+        /**
+         * Download
+         *
+         * 1=强制下载, 0=尝试内联预览
+         */
+        download?: number;
+    };
+    url: '/api/documents/{document_id}/file';
+};
+
+export type DownloadDocumentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DownloadDocumentError = DownloadDocumentErrors[keyof DownloadDocumentErrors];
+
+export type DownloadDocumentResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ListDocumentChunksData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+    };
+    url: '/api/documents/{document_id}/chunks';
+};
+
+export type ListDocumentChunksErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListDocumentChunksError = ListDocumentChunksErrors[keyof ListDocumentChunksErrors];
+
+export type ListDocumentChunksResponses = {
+    /**
+     * Successful Response
+     */
+    200: DocumentChunkListResponse;
+};
+
+export type ListDocumentChunksResponse = ListDocumentChunksResponses[keyof ListDocumentChunksResponses];
+
+export type GetDocumentChunkData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+        /**
+         * Chunk Id
+         */
+        chunk_id: string;
+    };
+    query?: never;
+    url: '/api/documents/{document_id}/chunks/{chunk_id}';
+};
+
+export type GetDocumentChunkErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetDocumentChunkError = GetDocumentChunkErrors[keyof GetDocumentChunkErrors];
+
+export type GetDocumentChunkResponses = {
+    /**
+     * Successful Response
+     */
+    200: DocumentChunkDetail;
+};
+
+export type GetDocumentChunkResponse = GetDocumentChunkResponses[keyof GetDocumentChunkResponses];
+
+export type ListConversationsData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+    };
+    url: '/api/conversations';
+};
+
+export type ListConversationsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListConversationsError = ListConversationsErrors[keyof ListConversationsErrors];
+
+export type ListConversationsResponses = {
+    /**
+     * Successful Response
+     */
+    200: ConversationPage;
+};
+
+export type ListConversationsResponse = ListConversationsResponses[keyof ListConversationsResponses];
+
+export type CreateConversationData = {
+    body: ConversationCreate;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/conversations';
+};
+
+export type CreateConversationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateConversationError = CreateConversationErrors[keyof CreateConversationErrors];
+
+export type CreateConversationResponses = {
+    /**
+     * Successful Response
+     */
+    201: ConversationRead;
+};
+
+export type CreateConversationResponse = CreateConversationResponses[keyof CreateConversationResponses];
+
+export type DeleteConversationData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Conversation Id
+         */
+        conversation_id: string;
+    };
+    query?: never;
+    url: '/api/conversations/{conversation_id}';
+};
+
+export type DeleteConversationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteConversationError = DeleteConversationErrors[keyof DeleteConversationErrors];
+
+export type DeleteConversationResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteConversationResponse = DeleteConversationResponses[keyof DeleteConversationResponses];
+
+export type GetConversationData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Conversation Id
+         */
+        conversation_id: string;
+    };
+    query?: never;
+    url: '/api/conversations/{conversation_id}';
+};
+
+export type GetConversationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetConversationError = GetConversationErrors[keyof GetConversationErrors];
+
+export type GetConversationResponses = {
+    /**
+     * Successful Response
+     */
+    200: ConversationDetail;
+};
+
+export type GetConversationResponse = GetConversationResponses[keyof GetConversationResponses];
+
+export type StreamChatData = {
+    body: ChatRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Conversation Id
+         */
+        conversation_id: string;
+    };
+    query?: never;
+    url: '/api/conversations/{conversation_id}/chat';
+};
+
+export type StreamChatErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StreamChatError = StreamChatErrors[keyof StreamChatErrors];
+
+export type StreamChatResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ListEvaluationDatasetsData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/evaluations/datasets';
+};
+
+export type ListEvaluationDatasetsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListEvaluationDatasetsError = ListEvaluationDatasetsErrors[keyof ListEvaluationDatasetsErrors];
+
+export type ListEvaluationDatasetsResponses = {
+    /**
+     * Successful Response
+     */
+    200: DatasetListResponse;
+};
+
+export type ListEvaluationDatasetsResponse = ListEvaluationDatasetsResponses[keyof ListEvaluationDatasetsResponses];
+
+export type ListEvaluationRunsData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+    };
+    url: '/api/evaluations/runs';
+};
+
+export type ListEvaluationRunsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListEvaluationRunsError = ListEvaluationRunsErrors[keyof ListEvaluationRunsErrors];
+
+export type ListEvaluationRunsResponses = {
+    /**
+     * Successful Response
+     */
+    200: EvaluationRunPage;
+};
+
+export type ListEvaluationRunsResponse = ListEvaluationRunsResponses[keyof ListEvaluationRunsResponses];
+
+export type CreateEvaluationRunData = {
+    body: EvaluationRunCreate;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/evaluations/runs';
+};
+
+export type CreateEvaluationRunErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateEvaluationRunError = CreateEvaluationRunErrors[keyof CreateEvaluationRunErrors];
+
+export type CreateEvaluationRunResponses = {
+    /**
+     * Successful Response
+     */
+    201: EvaluationRunRead;
+};
+
+export type CreateEvaluationRunResponse = CreateEvaluationRunResponses[keyof CreateEvaluationRunResponses];
+
+export type DeleteEvaluationRunData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/evaluations/runs/{run_id}';
+};
+
+export type DeleteEvaluationRunErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteEvaluationRunError = DeleteEvaluationRunErrors[keyof DeleteEvaluationRunErrors];
+
+export type DeleteEvaluationRunResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteEvaluationRunResponse = DeleteEvaluationRunResponses[keyof DeleteEvaluationRunResponses];
+
+export type GetEvaluationRunData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/evaluations/runs/{run_id}';
+};
+
+export type GetEvaluationRunErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetEvaluationRunError = GetEvaluationRunErrors[keyof GetEvaluationRunErrors];
+
+export type GetEvaluationRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: EvaluationRunRead;
+};
+
+export type GetEvaluationRunResponse = GetEvaluationRunResponses[keyof GetEvaluationRunResponses];
+
+export type ListEvaluationItemsData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+        /**
+         * Bad Case Only
+         */
+        bad_case_only?: boolean;
+        /**
+         * Category
+         */
+        category?: 'document_parse_failed' | 'chunk_split_bad' | 'embedding_recall_miss' | 'keyword_recall_miss' | 'rrf_fusion_error' | 'rerank_order_error' | 'context_judge_too_loose' | 'context_judge_too_strict' | 'prompt_constraint_weak' | 'generation_off_context' | 'citation_parse_failed' | 'permission_filter_error' | 'other' | null;
+    };
+    url: '/api/evaluations/runs/{run_id}/items';
+};
+
+export type ListEvaluationItemsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListEvaluationItemsError = ListEvaluationItemsErrors[keyof ListEvaluationItemsErrors];
+
+export type ListEvaluationItemsResponses = {
+    /**
+     * Successful Response
+     */
+    200: EvaluationItemPage;
+};
+
+export type ListEvaluationItemsResponse = ListEvaluationItemsResponses[keyof ListEvaluationItemsResponses];
+
+export type GetEvaluationItemData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: string;
+    };
+    query?: never;
+    url: '/api/evaluations/items/{item_id}';
+};
+
+export type GetEvaluationItemErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetEvaluationItemError = GetEvaluationItemErrors[keyof GetEvaluationItemErrors];
+
+export type GetEvaluationItemResponses = {
+    /**
+     * Successful Response
+     */
+    200: EvaluationItemRead;
+};
+
+export type GetEvaluationItemResponse = GetEvaluationItemResponses[keyof GetEvaluationItemResponses];
+
+export type UpdateEvaluationItemData = {
+    body: EvaluationItemUpdate;
+    headers?: {
+        /**
+         * Authorization
+         */
+        Authorization?: string | null;
+    };
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: string;
+    };
+    query?: never;
+    url: '/api/evaluations/items/{item_id}';
+};
+
+export type UpdateEvaluationItemErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateEvaluationItemError = UpdateEvaluationItemErrors[keyof UpdateEvaluationItemErrors];
+
+export type UpdateEvaluationItemResponses = {
+    /**
+     * Successful Response
+     */
+    200: EvaluationItemRead;
+};
+
+export type UpdateEvaluationItemResponse = UpdateEvaluationItemResponses[keyof UpdateEvaluationItemResponses];

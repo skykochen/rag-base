@@ -1,3 +1,7 @@
+/**
+ * 用户管理 API 薄包装与 hooks（admin 用）。
+ */
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   assignUserRoles as sdkAssignUserRoles,
@@ -17,7 +21,9 @@ export function useUsers(page = 1, pageSize = 20) {
   return useQuery({
     queryKey: usersListKey(page, pageSize),
     queryFn: async () =>
-      (await sdkListUsers({ query: { page, page_size: pageSize } })).data,
+      (
+        await sdkListUsers({ query: { page, page_size: pageSize } })
+      ).data,
   })
 }
 

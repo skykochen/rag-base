@@ -1,8 +1,16 @@
+/**
+ * 登录态：token + 当前用户基本信息 + 有效权限标签 + 是否管理员。
+ *
+ * 持久化策略：
+ * - token / user 基本信息进 localStorage，刷新页不必重新登录
+ * - 启动时 hydrate() 从 localStorage 读 token；hasToken() 决定是否进登录页
+ * - 由顶层 RequireAuth 组件在 mount 时调 /auth/me 拉一次最新用户信息（保证角色变更立即生效）
+ */
+
 import { create } from 'zustand'
 
 const TOKEN_KEY = 'rag-kb.auth.token'
 const USER_KEY = 'rag-kb.auth.user'
-
 
 export interface AuthUser {
   id: string

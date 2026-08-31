@@ -12,7 +12,7 @@ export const gfmComponents = {
           fontSize: 13,
           background: '#fff',
         }}
-        />
+      />
     </div>
   ),
   th: (props: React.ComponentProps<'th'>) => (
@@ -25,13 +25,13 @@ export const gfmComponents = {
         textAlign: 'left',
         fontWeight: 600,
       }}
-      />
+    />
   ),
   td: (props: React.ComponentProps<'td'>) => (
     <td
       {...props}
       style={{ border: '1px solid #d9d9d9', padding: '6px 10px', verticalAlign: 'top' }}
-      />
+    />
   ),
   code: (props: React.ComponentProps<'code'>) => (
     <code
@@ -42,6 +42,6 @@ export const gfmComponents = {
         borderRadius: 3,
         fontSize: '0.9em',
       }}
-      />
+    />
   ),
 }

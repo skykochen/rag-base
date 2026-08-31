@@ -1,3 +1,9 @@
+/**
+ * 评测 run 列表页：表格 + 新建 Modal + 删除 Popconfirm。
+ *
+ * running 状态的 run 自动 5s 轮询（在 useEvaluationRuns hook 里）。
+ */
+
 import { useState } from 'react'
 import { App, Button, Form, Input, Modal, Popconfirm, Select, Table, Tag } from 'antd'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
@@ -18,14 +24,16 @@ const STATUS_TAG: Record<string, { color: string; label: string }> = {
 }
 
 function pct(v: number | null | undefined) {
-    if (v === null || v === undefined) return '—'
-    return `${(v * 100).toFixed(1)}%`
+  if (v === null || v === undefined) return '—'
+  return `${(v * 100).toFixed(1)}%`
 }
+
 export function EvaluationListPage() {
   const [page, setPage] = useState(1)
   const pageSize = 20
   const { data, isLoading } = useEvaluationRuns(page, pageSize)
   const [modalOpen, setModalOpen] = useState(false)
+
   const columns: ColumnsType<EvaluationRunListItem> = [
     {
       title: '名称',
@@ -58,7 +66,7 @@ export function EvaluationListPage() {
         return <Tag color={tag.color}>{tag.label}</Tag>
       },
     },
-      { title: 'Faithfulness', dataIndex: 'faithfulness', width: 110, render: pct },
+    { title: 'Faithfulness', dataIndex: 'faithfulness', width: 110, render: pct },
     { title: 'AnswerRel.', dataIndex: 'answer_relevancy', width: 110, render: pct },
     { title: 'Ctx Prec.', dataIndex: 'context_precision', width: 110, render: pct },
     { title: 'Ctx Recall', dataIndex: 'context_recall', width: 110, render: pct },
@@ -82,6 +90,7 @@ export function EvaluationListPage() {
       render: (_, record) => <DeleteRunButton runId={record.id} runName={record.name} />,
     },
   ]
+
   return (
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
@@ -106,6 +115,24 @@ export function EvaluationListPage() {
       />
       <CreateRunModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
+  )
+}
+
+function DeleteRunButton({ runId, runName }: { runId: string; runName: string }) {
+  const { message } = App.useApp()
+  const mutation = useDeleteEvaluationRun()
+  return (
+    <Popconfirm
+      title={`删除评测 “${runName}”？`}
+      description="该 run 及其全部 case 都会被删除"
+      okType="danger"
+      onConfirm={async () => {
+        await mutation.mutateAsync(runId)
+        message.success('已删除')
+      }}
+    >
+      <Button type="text" danger icon={<DeleteOutlined />} />
+    </Popconfirm>
   )
 }
 
@@ -155,22 +182,5 @@ function CreateRunModal({ open, onClose }: { open: boolean; onClose: () => void 
         </Form.Item>
       </Form>
     </Modal>
-  )
-}
-function DeleteRunButton({ runId, runName }: { runId: string; runName: string }) {
-  const { message } = App.useApp()
-  const mutation = useDeleteEvaluationRun()
-  return (
-    <Popconfirm
-      title={`删除评测 “${runName}”？`}
-      description="该 run 及其全部 case 都会被删除"
-      okType="danger"
-      onConfirm={async () => {
-        await mutation.mutateAsync(runId)
-        message.success('已删除')
-      }}
-    >
-      <Button type="text" danger icon={<DeleteOutlined />} />
-    </Popconfirm>
   )
 }

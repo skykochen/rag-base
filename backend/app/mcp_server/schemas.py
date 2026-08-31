@@ -1,10 +1,16 @@
+"""MCP 工具入参 / 出参 Pydantic 模型。
+
+与 REST `app/api/schemas/` 故意保持独立，因为 MCP 协议把 schema 直接暴露给
+外部 Agent，字段命名与可见性更接近"对外契约"，不能随 REST 改 ORM 时联动。
+"""
+
 from datetime import datetime
 from typing import Literal
-
-from app.api.schemas.documents import DocumentStatusValue, IngestionTaskStatusValue
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.api.schemas.documents import DocumentStatusValue, IngestionTaskStatusValue
 
 
 class MCPCitation(BaseModel):
@@ -12,6 +18,7 @@ class MCPCitation(BaseModel):
     Agent 真正需要的字段，避免把 retrieval_meta / rerank_score 等内部调试
     元数据塞给 Agent。
     """
+
     ordinal: int = Field(description="prompt 中给 LLM 的「片段 N」编号，从 1 开始")
     document_id: UUID
     document_name: str
@@ -43,6 +50,7 @@ class MCPUploadResult(BaseModel):
         description="sha256；文件级幂等键，相同 hash 复用现有文档"
     )
 
+
 class MCPDocumentItem(BaseModel):
     """list_documents 列表项。"""
 
@@ -58,18 +66,23 @@ class MCPDocumentItem(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
 class MCPDocumentList(BaseModel):
     """list_documents 出参，标准分页结构。"""
+
     items: list[MCPDocumentItem]
     total: int
     page: int = Field(ge=1)
     page_size: int = Field(ge=1, le=100)
 
+
 class MCPDocumentStatus(BaseModel):
     """get_document_status 出参。
+
     `latest_task_*` 字段允许外部 Agent 直接观察 ingest / reindex 进度，
     避免它们再多调一次 list_documents。
     """
+
     document_id: UUID
     name: str
     status: DocumentStatusValue
@@ -81,18 +94,16 @@ class MCPDocumentStatus(BaseModel):
     latest_task_progress_done: int | None = None
     latest_task_error_message: str | None = None
 
+
 class MCPStats(BaseModel):
     """get_knowledge_base_stats 出参。
 
     严格按调用者权限范围统计；admin 视角看全量，普通用户只看自己有权访问的。
     """
+
     document_count: int
     chunk_count: int
     last_indexed_at: datetime | None = Field(
         default=None,
-        description="最近一次进入 ready 状态的文档时间；库为空时返回 nul",
+        description="最近一次进入 ready 状态的文档时间；库为空时返回 null",
     )
-
-
-
-

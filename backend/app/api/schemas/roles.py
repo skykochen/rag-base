@@ -1,4 +1,7 @@
+"""角色管理请求体（admin 路由用）。"""
+
 from pydantic import BaseModel, Field
+
 
 class RoleCreate(BaseModel):
     name: str = Field(min_length=1, max_length=64)
@@ -11,4 +14,3 @@ class RoleUpdate(BaseModel):
 
     description: str | None = Field(default=None, max_length=256)
     permission_tags: list[str] | None = None
-

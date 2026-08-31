@@ -1,11 +1,21 @@
+"""RAGAS 自动指标封装：Faithfulness / AnswerRelevancy / ContextPrecision / ContextRecall。
+
+使用 ragas 0.4 的稳定接口（`evaluate()` + `SingleTurnSample` + 小写指标实例）。
+LLM judge 复用项目自己的 ChatOpenAI（DashScope qwen），embedding 复用项目
+OpenAIEmbeddings（DashScope text-embedding-v3），不引第二份模型配置。
+
+异常处理语义：RAGAS 跑批中途异常 → 整批 4 项指标都给 None；不让评测主流程崩，
+单条 case 的指标缺失由 scoring 层自然降级（只看引用命中 / 拒答正确）。
+"""
+
 import asyncio
 import warnings
 from dataclasses import dataclass
-from langchain_openai import ChatOpenAI  # noqa: E402
+
 # ragas 0.4 把 metrics import 路径迁到 collections，但小写实例 API 在 v1.0 前都可用；
 # 这里集中静默 DeprecationWarning，避免污染日志，等 ragas 1.0 发布后再升级
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="ragas")
-from app.core.config import settings
+
 from ragas import evaluate  # noqa: E402
 from ragas.dataset_schema import EvaluationDataset, SingleTurnSample  # noqa: E402
 from ragas.metrics import (  # noqa: E402
@@ -14,12 +24,13 @@ from ragas.metrics import (  # noqa: E402
     context_recall,
     faithfulness,
 )
-from ragas.run_config import RunConfig  # noqa: E402
+
 from app.core.logging import get_logger  # noqa: E402
 from app.ingestion.embedder import get_embeddings  # noqa: E402
 from app.llm.models import get_chat_model  # noqa: E402
 
 logger = get_logger(__name__)
+
 
 @dataclass(frozen=True)
 class RagasMetrics:
@@ -46,21 +57,6 @@ class RagasSample:
 
 _METRICS = [faithfulness, answer_relevancy, context_precision, context_recall]
 
-_RUN_CONFIG = RunConfig(
-    timeout=300,      # 单次 LLM/embedding 调用放宽到 5 分钟（DashScope 响应慢）
-    max_workers=4,    # 并发降到 4，避免 16 个 Job 同时打爆 DashScope 限流
-    max_retries=3,    # 失败最多重试 3 次（默认 10 次反而会拖长整批时间）
-)
-
-# 评测专用 LLM：不复用 get_chat_model()（那是聊天流式用，默认 httpx 超时仅 60s，
-# 评测请求上下文长、响应慢，60s 会被 httpx 层直接掐断导致批量 TimeoutError）
-_eval_chat_model = ChatOpenAI(
-    model=settings.chat_model,
-    api_key=settings.chat_api_key,
-    base_url=settings.chat_base_url,
-    temperature=0,
-    timeout=300,      # httpx 客户端超时放宽到 5 分钟，必须比 ragas 层更大
-)
 
 async def evaluate_batch(samples: list[RagasSample]) -> list[RagasMetrics]:
     """对一批样本算 RAGAS 指标，返回长度与 samples 一致的指标列表。
@@ -84,13 +80,16 @@ async def evaluate_batch(samples: list[RagasSample]) -> list[RagasMetrics]:
     )
 
     try:
+        # ragas.evaluate 是同步函数，内部用 asyncio.run 跑 async 链路；
+        # 但项目跑在 uvicorn + uvloop 上，uvloop 不允许在已有 running loop 里再起 nested loop，
+        # 所以用 asyncio.to_thread 把 evaluate 丢到 worker 线程，让它在干净的线程里自起 asyncio loop。
+        # raise_exceptions=False：单条 case 上 LLM judge 失败时返回 NaN 而非整批崩
         result = await asyncio.to_thread(
             evaluate,
             dataset=dataset,
             metrics=_METRICS,
-            llm=_eval_chat_model,
+            llm=get_chat_model(),
             embeddings=get_embeddings(),
-            run_config=_RUN_CONFIG,
             raise_exceptions=False,
             show_progress=False,
         )
@@ -100,7 +99,13 @@ async def evaluate_batch(samples: list[RagasSample]) -> list[RagasMetrics]:
 
     return _extract_metrics(result, expected=len(samples))
 
+
 def _extract_metrics(result, expected: int) -> list[RagasMetrics]:
+    """从 EvaluationResult 抽出 N 行 × 4 列指标。
+
+    EvaluationResult.scores 是 list[dict[metric_name, float | nan]]；
+    跨版本字段名可能略有差异，做一层防御。
+    """
     rows = getattr(result, "scores", None) or []
     if len(rows) != expected:
         logger.warning(
@@ -130,7 +135,6 @@ def _pick(row: dict, key: str) -> float | None:
         as_float = float(value)
     except (TypeError, ValueError):
         return None
-    #aN 有一个奇特性质：它不等于任何值，包括它自己。
     if as_float != as_float:  # NaN
         return None
     return as_float
@@ -138,6 +142,8 @@ def _pick(row: dict, key: str) -> float | None:
 
 def _empty_metrics() -> RagasMetrics:
     return RagasMetrics(
-        faithfulness=None, answer_relevancy=None,
-        context_precision=None, context_recall=None,
+        faithfulness=None,
+        answer_relevancy=None,
+        context_precision=None,
+        context_recall=None,
     )

@@ -1,12 +1,12 @@
+"""问答相关请求 / 响应模型。"""
 
 from datetime import datetime
-
-from app import retrieval
-from app.core.observability import build_trace_url
-from app.workflows.rag_state import QueryRoute
-from uuid import UUID
 from typing import Literal
-from pydantic import Field, BaseModel, ConfigDict
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.core.observability import build_trace_url
 
 MessageRoleValue = Literal["user", "assistant", "system"]
 QueryRouteValue = Literal["original", "rewrite", "hyde", "multi_query"]
@@ -14,12 +14,24 @@ AgentActionValue = Literal[
     "initial", "proceed", "rewrite_query", "switch_route", "refuse"
 ]
 
+
+class QueryRouteRead(BaseModel):
+    """Query 优化的调试快照。仅 assistant 消息会带，前端用于渲染调试面板。"""
+
+    route: QueryRouteValue
+    query: str
+    rewritten_query: str | None = None
+    hyde_answer: str | None = None
+    multi_queries: list[str] | None = None
+
+
 class AgentStep(BaseModel):
     """Agentic RAG 单轮决策 + 观察快照。
 
     plan_retrieval 先填决策字段（round / action / reason / route / query），
     retrieve 跑完后 observe_context 回填观察字段（retrieved_count / top_score / sufficient）。
     """
+
     round: int
     action: AgentActionValue
     reason: str
@@ -29,16 +41,10 @@ class AgentStep(BaseModel):
     top_score: float | None = None
     sufficient: bool | None = None
 
-class QueryRouteRead(BaseModel):
-    route: QueryRouteValue
-    query: str
-    rewritten_query: str | None
-    hyde_answer: str | None
-    multi_queries: list[str] | None
-
 
 class ConversationCreate(BaseModel):
-    title: str = Field("新会话", min_length=1, max_length=256)
+    title: str = Field("新对话", min_length=1, max_length=256)
+
 
 class ConversationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -48,28 +54,23 @@ class ConversationRead(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
 class ConversationListItem(BaseModel):
-     """会话列表元素：侧栏渲染用，比 ConversationRead 多带 message_count。"""
-     id: UUID
-     title: str
-     updated_at: datetime
-     message_count: int
+    """会话列表元素：侧栏渲染用，比 ConversationRead 多带 message_count。"""
+
+    id: UUID
+    title: str
+    updated_at: datetime
+    message_count: int
+
 
 class ConversationPage(BaseModel):
     """会话列表分页响应。统一 page/page_size 风格，与第 3 章文档列表一致。"""
+
     items: list[ConversationListItem]
     total: int
     page: int
     page_size: int
-
-class VerifyResultRead(BaseModel):
-    """answer_verifier 校验结果，落库到 messages.extra_metadata.verify_result。
-
-    - verified=True：答案被引用片段支撑；reason 通常为空
-    - verified=False：触发拒答替换（service 层覆盖 answer/refused），reason 写入失败原因
-    """
-    verified: bool
-    reason: str | None
 
 
 class RetrievalMeta(BaseModel):
@@ -80,14 +81,28 @@ class RetrievalMeta(BaseModel):
     - vector_score：cosine similarity，绝对值有意义，做拒答阈值用
     - keyword_score：ts_rank，相对值，跨 query 不可比
     - rrf_score：两路融合分，仅在同一次检索内可比
+    - rerank_score：第 8 章 reranker 精排分（qwen3-rerank ∈ [0, 1]）；
+      未开启 / 历史消息为 None
     """
-    sources:list[str] = Field(default_factory=list)
-    vector_rank:int | None = None
-    keyword_rank:int | None = None
-    vector_score:float | None = None
-    keyword_score:float | None = None
-    rrf_score:float | None = None
+
+    sources: list[str] = Field(default_factory=list)
+    vector_rank: int | None = None
+    vector_score: float | None = None
+    keyword_rank: int | None = None
+    keyword_score: float | None = None
+    rrf_score: float | None = None
     rerank_score: float | None = None
+
+
+class VerifyResultRead(BaseModel):
+    """answer_verifier 校验结果，落库到 messages.extra_metadata.verify_result。
+
+    - verified=True：答案被引用片段支撑；reason 通常为空
+    - verified=False：触发拒答替换（service 层覆盖 answer/refused），reason 写入失败原因
+    """
+
+    verified: bool
+    reason: str | None = None
 
 
 class CitationRead(BaseModel):
@@ -95,6 +110,7 @@ class CitationRead(BaseModel):
 
     document_id / chunk_id 可能为空（原文档 / chunk 已被删除）。
     """
+
     id: UUID
     # 与 prompt 中的「片段 N」编号一致；前端渲染 [N] 角标用，避免按数组下标渲染
     # 在历史接口里被 UUID 排序乱序后串号
@@ -117,8 +133,9 @@ class CitationRead(BaseModel):
             document_name=citation.document_name,
             page_no=citation.page_no,
             quote=citation.quote,
-            retrieval_meta=_parse_retrieval_meta(citation.retrieval_meta)
+            retrieval_meta=_parse_retrieval_meta(citation.retrieval_meta),
         )
+
 
 def _parse_retrieval_meta(raw: dict | None) -> RetrievalMeta | None:
     """历史消息没有 retrieval_meta，非法/缺失静默返回 None。"""
@@ -142,11 +159,13 @@ class MessageRead(BaseModel):
     agent_steps: list[AgentStep] | None = None
     # 第 8 章 answer_verifier 校验结果；user / 旧消息 / 拒答路径为 None
     verify_result: VerifyResultRead | None = None
+    # LangSmith trace_id；user / 旧消息 / 未启用观测时为 None
     trace_id: str | None = None
+    # LangSmith UI 跳转链接，按 LANGSMITH_RUN_URL_PREFIX 拼接；未配置 prefix 时为 None
+    # 后端拼好下发，避免把 workspace / org 信息暴露到前端配置
     trace_url: str | None = None
     # 语义缓存：True 表示本条 assistant 消息来自缓存命中（跳过了图和 LLM）
     cache_hit: bool = False
-
 
     @classmethod
     def from_orm(cls, message) -> "MessageRead":  # type: ignore[no-untyped-def]
@@ -174,19 +193,28 @@ class MessageRead(BaseModel):
             cache_hit=_parse_cache_hit(message.extra_metadata) if is_assistant else False,
         )
 
-def _parse_cache_hit(metadata: dict | None) -> bool:
-    """从 messages.extra_metadata 中提取 cache_hit 标记。
 
-    历史消息没有该字段，按 False 处理。
-    """
+def _parse_agent_steps(metadata: dict | None) -> list[AgentStep] | None:
+    """从 messages.extra_metadata 解析 agent_steps；缺失 / 非法静默返回 None。"""
     if not metadata:
-        return False
-    raw = metadata.get("cache_hit")
-    return bool(raw)
+        return None
+    raw = metadata.get("agent_steps")
+    if not isinstance(raw, list) or not raw:
+        return None
+    parsed: list[AgentStep] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            return None
+        try:
+            parsed.append(AgentStep.model_validate(item))
+        except Exception:
+            return None
+    return parsed
 
 
 def _parse_query_route(metadata: dict | None) -> QueryRouteRead | None:
     """从 messages.metadata 中提取 query_route 字段。
+
     历史消息没有这个字段，非法/缺失时静默返回 None，不阻断接口。
     """
     if not metadata:
@@ -199,6 +227,7 @@ def _parse_query_route(metadata: dict | None) -> QueryRouteRead | None:
     except Exception:
         return None
 
+
 def _parse_trace_id(metadata: dict | None) -> str | None:
     """从 messages.extra_metadata 中提取 trace_id。"""
     if not metadata:
@@ -208,29 +237,20 @@ def _parse_trace_id(metadata: dict | None) -> str | None:
         return None
     return raw
 
-def _parse_agent_steps(metadata: dict | None) -> list[AgentStep] | None:
-    """从 messages.metadata 中提取 agent_steps 字段。
-    历史消息没有这个字段，非法/缺失时静默返回 None，不阻断接口。
+
+def _parse_cache_hit(metadata: dict | None) -> bool:
+    """从 messages.extra_metadata 中提取 cache_hit 标记。
+
+    历史消息没有该字段，按 False 处理。
     """
     if not metadata:
-        return None
-    raw = metadata.get("agent_steps")
-    if not isinstance(raw, list):
-        return None
-    parsed: list[AgentStep] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            return None
-        try:
-            parsed.append(AgentStep.model_validate(item))
-        except Exception:
-            return None
-    return parsed
+        return False
+    raw = metadata.get("cache_hit")
+    return bool(raw)
+
 
 def _parse_verify_result(metadata: dict | None) -> VerifyResultRead | None:
-    """从 messages.metadata 中提取 verify_result 字段。
-    历史消息没有这个字段，非法/缺失时静默返回 None，不阻断接口。
-    """
+    """从 messages.extra_metadata 中提取 verify_result 字段。第 8 章前的历史消息没有。"""
     if not metadata:
         return None
     raw = metadata.get("verify_result")
@@ -240,6 +260,7 @@ def _parse_verify_result(metadata: dict | None) -> VerifyResultRead | None:
         return VerifyResultRead.model_validate(raw)
     except Exception:
         return None
+
 
 class ConversationDetail(BaseModel):
     """会话详情：会话本身 + 历史消息（含引用）。"""

@@ -1,3 +1,10 @@
+/**
+ * 登录页：独立于 BasicLayout，无侧栏 / 顶栏。
+ *
+ * 登录成功后回到 ?back= 指定的路径；缺失时回 /。
+ * 默认账号 admin/admin 在登录页底部展示。
+ */
+
 import { useState } from 'react'
 import { App as AntdApp, Button, Card, Form, Input, Typography } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
@@ -37,7 +44,8 @@ export function LoginPage() {
         minHeight: '100vh',
         display: 'grid',
         placeItems: 'center',
-        background: 'linear-gradient(135deg, #f5f7fb 0%, #e6efff 100%)',
+        background:
+          'linear-gradient(135deg, #f5f7fb 0%, #e6efff 100%)',
         padding: 24,
       }}
     >
@@ -51,12 +59,18 @@ export function LoginPage() {
           initialValues={{ username: '', password: '' }}
           autoComplete="off"
         >
-          <Form.Item name="username" label="用户名"
-            rules={[{ required: true, message: '请输入用户名' }]}>
+          <Form.Item
+            name="username"
+            label="用户名"
+            rules={[{ required: true, message: '请输入用户名' }]}
+          >
             <Input prefix={<UserOutlined />} placeholder="用户名" autoFocus />
           </Form.Item>
-          <Form.Item name="password" label="密码"
-            rules={[{ required: true, message: '请输入密码' }]}>
+          <Form.Item
+            name="password"
+            label="密码"
+            rules={[{ required: true, message: '请输入密码' }]}
+          >
             <Input.Password prefix={<LockOutlined />} placeholder="密码" />
           </Form.Item>
           <Form.Item style={{ marginBottom: 8 }}>

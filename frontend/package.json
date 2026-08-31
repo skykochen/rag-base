@@ -6,33 +6,35 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "eslint .",
     "preview": "vite preview",
     "gen:api": "openapi-ts"
   },
   "dependencies": {
-    "@ant-design/icons": "^6.3.2",
+    "@ant-design/icons": "^6.2.2",
     "@microsoft/fetch-event-source": "^2.0.1",
-    "@tanstack/react-query": "^5.101.2",
-    "antd": "^6.5.0",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "@tanstack/react-query": "^5.100.9",
+    "antd": "^6.3.7",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.18.1",
+    "react-router-dom": "^7.15.0",
     "remark-gfm": "^4.0.1",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.13"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "^0.99.0",
-    "@types/node": "^24.13.3",
-    "@types/react": "^19.2.17",
+    "@eslint/js": "^10.0.1",
+    "@hey-api/openapi-ts": "^0.97.1",
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.3",
-    "oxlint": "^1.71.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.2.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
     "typescript": "~6.0.2",
-    "vite": "^8.1.1"
-  },
-  "overrides": {
-    "js-yaml": ">=4.3.0"
+    "typescript-eslint": "^8.58.2",
+    "vite": "^8.0.10"
   }
 }

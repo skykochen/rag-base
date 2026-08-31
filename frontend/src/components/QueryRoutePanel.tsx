@@ -23,6 +23,7 @@ export function QueryRoutePanel({ queryRoute }: QueryRoutePanelProps) {
   if (queryRoute.route === 'original') return null
 
   const meta = ROUTE_META[queryRoute.route]
+
   return (
     <Collapse
       size="small"
@@ -76,6 +77,7 @@ function RouteDetail({ queryRoute }: { queryRoute: QueryRouteRead }) {
       return null
   }
 }
+
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>

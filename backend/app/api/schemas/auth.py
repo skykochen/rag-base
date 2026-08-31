@@ -1,4 +1,4 @@
-
+"""认证 / 用户相关响应模型。"""
 
 from datetime import datetime
 from typing import Literal
@@ -6,8 +6,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+
 # 与 app.db.models.UserStatus 同步
 UserStatusValue = Literal["active", "disabled"]
+
 
 class RoleRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -17,6 +19,7 @@ class RoleRead(BaseModel):
     description: str
     permission_tags: list[str] = Field(default_factory=list)
     created_at: datetime
+
 
 class UserRead(BaseModel):
     """用户响应。role 列表里只展示必要字段，权限标签由前端从 roles 推。"""
