@@ -1,421 +1,318 @@
-## 一、项目介绍
-这是一套以 **AI 应用开发实战 + Python 后端工程化** 为核心的项目教程，基于 FastAPI + LangChain + LangGraph + React 开发企业级 **RAG 智能知识库系统**，带大家掌握新时代程序员必知必会的 RAG 检索增强生成、Agentic 工作流编排、向量检索等前沿技术，大幅提升求职竞争力！
+# RAG 知识库问答系统
 
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779634276106-8be0cb3a-8e77-4f21-badb-a3326ea72042.png)
+一套可私有化部署的企业级 RAG 知识库问答系统：上传文档后自动完成解析、切分、向量化，问答时由 LangGraph 编排的 Agentic RAG 工作流自主决定"直接答、换个方式再检索一次、还是明确拒答"，每条答案附带可回溯的引用来源。
 
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779696528173-312665bd-3782-4db1-94b7-645f82a896bd.png)
+后端 Python + FastAPI + LangChain / LangGraph，前端 React + TypeScript，检索层基于 PostgreSQL（pgvector + zhparser）自建混合检索，不依赖任何托管向量数据库。
 
-### 4 大核心能力
-1）智能文档入库：用户上传 PDF / DOCX / Markdown / HTML 文档，系统自动完成解析、切分、向量化全过程，支持异步处理和状态实时反馈。
+---
 
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779634096067-5047f007-6dfd-482f-990e-b9b6a73d1a47.png)
+## 核心特性
 
-2）知识库问答：基于 LangGraph 编排的 Agentic RAG 工作流，融合向量检索与全文检索，逐 token 流式输出答案，每条回答附带来源引用，让用户知道答案依据。
+**文档入库**
 
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779634288377-d8845185-748e-4f96-b15f-126d7426f80f.png)
+- 支持 PDF / DOCX / Markdown / HTML，Docling 统一解析为结构化文本
+- 按标题层级切分，保留章节上下文，chunk 带层级路径元信息
+- SHA256 幂等校验，重复上传直接拒绝
+- Celery 异步处理，`ingestion_tasks` 表逐步记录解析 / 切分 / 向量化进度与失败原因，支持断点重跑
+- 文档状态流转：`uploading → parsing → indexing → ready / failed`
 
-3）多轮对话与会话管理：支持上下文连续追问，AI 能理解对话历史进行多轮推理；多会话隔离，用户可以针对不同主题创建独立对话。
+**检索**
 
-4）企业级工程能力：认证鉴权、文档级权限过滤、语义缓存、接口限流、全链路可观测、自动化评测、MCP Server 集成，一个项目覆盖生产环境所需的全部能力。
+- 双路召回：pgvector 余弦相似度检索 + PostgreSQL zhparser 中文全文检索
+- 向量路以 0.6 相似度阈值预过滤，砍掉明显不相关的候选，降低精排成本
+- RRF（k=60）倒数排名融合，两路等权，无需手工调权重
+- qwen3-rerank 交叉编码精排，Top-15 裁剪至 Top-5
+- 单路异常自动降级为另一路，主链路不中断
 
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779634407860-97afc00b-e1ae-4ff2-937c-cdeed757c272.png)
+**问答**
 
+- LangGraph StateGraph 编排：意图路由 → 确定性首轮检索 → 充分性评估 → 查询改写 / 子问题分解 / HyDE → 生成或拒答
+- 首轮召回不充分时自动改写补充检索，最多两轮，超过则走拒答
+- 进图前加载会话历史并做指代消解，滑动窗口保留最近 5 轮
+- SSE 逐 token 流式输出
+- 五层拒答拦截，答案强制编号标注引用来源，`answer_citations` 表落库可回溯
 
+**工程能力**
 
-当你学会这个项目后，你不仅能开发 RAG 知识库，更能灵活开发各种 AI 应用：AI 客服系统、智能文档助手、企业内部搜索引擎、AI 法律 / 医疗 / 金融领域问答系统，尽情发挥自己的想象力吧！
+- JWT 认证 + RBAC 角色权限，检索层做文档级权限过滤
+- Redis 语义缓存（RedisVL，阈值 0.92）+ 滑动窗口限流
+- LangSmith 全链路追踪，节点级输入输出与耗时可追溯
+- 自构造评测集 + RAGAS 自动化评测，Bad Case 归因
+- Docker Compose 编排基础设施，systemd 管理服务，Nginx 反向代理
 
+## 
 
+---
 
-### 为什么做这个项目？
-1）行业刚需：RAG 是当前大模型落地最成熟的范式，几乎每家公司的 AI 项目都需要知识库能力。掌握 RAG 开发就是掌握 AI 应用开发的核心技能。
+## 快速开始
 
-2）找工作好用：随着 AI 发展，企业对能落地 AI 应用的开发者需求激增。RAG 项目技术含量高、知识面广，面试时一个项目能聊出十几个技术深度问题。
+### 环境要求
 
-3）技术值得学：此类项目不仅涉及 AI 工程（向量检索、工作流编排、Prompt Engineering），还需要扎实的后端功底（异步编程、缓存设计、权限模型、可观测性），是综合能力的最佳练兵场。
+- Python 3.12+
+- Node.js 20+
+- Docker + Docker Compose
+- [uv](https://docs.astral.sh/uv/)（Python 包管理）
 
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779634663825-d2953233-e5ba-4ac8-bbbd-24731c78c1c2.png)
+### 1. 启动基础设施
 
+```bash
+cp .env.example .env        # 按下面的说明填好模型 API Key
+docker compose up -d        # PostgreSQL(pgvector + zhparser) + Redis Stack
+```
 
+PostgreSQL 镜像在 `pgvector/pgvector:pg16` 之上叠加了 zhparser，一次构建同时支持向量检索与中文全文检索。
 
-## 二、项目优势
-### 项目收获
-本项目紧跟 AI 时代、选题硬核、**对标企业真实需求**、技术丰富。区别于增删改查的普通项目，教程会带你实战大量前沿技术和企业应用场景，掌握层层递进的系统设计、项目扩展和优化方案，帮你成为 AI 时代企业的香饽饽，给你的简历和求职大幅增加竞争力！
+### 2. 初始化数据库
 
-Python + AI 全栈项目，技术丰富，玩透 LangChain + LangGraph：
+```bash
+cd backend
+uv sync
+uv run alembic upgrade head
+uv run python -m app.db.seed    # 创建默认管理员
+```
 
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779634727146-200363b3-7e37-4e73-8639-d827a17f17b4.png)
+### 3. 启动后端
 
-业务场景真实，实践大量企业解决方案：
+```bash
+uv run uvicorn app.main:app --reload --port 8000
+uv run celery -A app.celery_app worker --loglevel=info
+```
 
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779634866906-986b2c52-9cdd-4c93-9144-bba667839649.png)
+### 4. 启动前端
 
-从这个项目中你可以学到：
+```bash
+cd frontend
+npm install
+npm run gen:api  
+npm run dev
+```
 
-+ 如何基于 LangChain + LangGraph 构建生产级 RAG 应用？
-+ 如何实现 Agentic RAG 工作流，让 AI 动态决策检索策略？
-+ 如何设计混合检索架构（向量 + 全文 + RRF 融合 + Reranker 精排）？
-+ 如何实现 Query 优化（改写 / HyDE / Multi-Query），提升检索召回率？
-+ 如何用 SSE 流式输出实现打字机效果的实时问答？
-+ 如何基于 JWT + RBAC 实现认证权限，并在检索层做文档级安全过滤？
-+ 如何利用 Redis 实现语义缓存和滑动窗口限流？
-+ 如何用 Celery 处理耗时的文档入库异步任务？
-+ 如何集成 LangSmith 实现全链路可观测，定位每次问答的瓶颈？
-+ 如何基于 RAGAS 框架做自动化评测和 Bad Case 归因分析？
-+ 如何通过 MCP 协议将知识库能力暴露给 Cursor、Claude Desktop 等外部 Agent？
-+ 如何基于宝塔面板 + Nginx + Docker Compose 完成生产部署？
+打开 <http://localhost:5173> ，接口文档 <http://localhost:8000/docs> 。
 
-此外，还能学会很多 AI 工程化、系统架构设计、技术方案对比的方法，提升排查问题、自主解决 Bug 的能力。教程还提供了大量的项目扩展点，有能力的同学可以进一步拉开和别人的区分度，无限进步！
+### 必要的环境变量
 
+| 变量                                              | 说明                                                         |
+| ----------------------------------------------- | ---------------------------------------------------------- |
+| `EMBEDDING_API_KEY`                             | DashScope API Key，用于 text-embedding-v3                     |
+| `CHAT_API_KEY` / `CHAT_BASE_URL` / `CHAT_MODEL` | 对话模型。默认走 DashScope 通义千问；OpenAI 兼容协议，换成 DeepSeek-V3 只需替换这三项 |
+| `RERANK_API_KEY` / `RERANK_MODEL`               | Reranker，默认 qwen3-rerank                                   |
+| `DATABASE_URL`                                  | 需用 `asyncpg` 驱动                                            |
+| `COS_SECRET_ID` 等                               | 腾讯云 COS 对象存储，留空则走本地文件系统                                    |
+| `LANGSMITH_API_KEY`                             | 可选，开启全链路追踪                                                 |
 
+其余参数（切分大小、检索阈值、缓存阈值、限流）在 `.env.example` 里都有默认值和注释。
 
-## 三、业务流程
-### 核心业务流程
-从用户注册登录 => 上传文档入库 => 知识库问答 => 多轮对话
+---
 
-![](https://cdn.nlark.com/yuque/__mermaid_v3/b068dbf4361b41e3240c42863acf48a3.svg)
+## 系统架构
 
+```mermaid
+flowchart TB
+    subgraph client["前端 React + TypeScript"]
+        ui["对话页 / 文档管理页 / 评测页"]
+        sse["fetch-event-source"]
+    end
 
+    subgraph api["FastAPI"]
+        auth["认证鉴权 JWT + RBAC"]
+        limit["滑动窗口限流 Redis"]
+        route["/documents /conversations /evaluations"]
+    end
 
-### 文档入库流程
+    subgraph async_layer["Celery Worker"]
+        ingest["入库流水线 解析→切分→向量化"]
+    end
+
+    subgraph rag["LangGraph 问答工作流"]
+        plan["意图路由"] --> retrieve["混合检索"]
+        retrieve --> observe["充分性评估"]
+        observe -->|不充分| rewrite["改写/HyDE/子问题"]
+        rewrite --> retrieve
+        observe -->|充分| rerank["Rerank 精排"]
+        rerank --> generate["生成 + 引用校验"]
+        observe -->|无法回答| refuse["统一拒答节点"]
+    end
+
+    subgraph storage["存储层"]
+        pg[("PostgreSQL<br/>pgvector + zhparser")]
+        redis[("Redis<br/>语义缓存 / 限流 / Broker")]
+        cos[("对象存储 COS")]
+    end
+
+    ui --> api
+    sse -.->|流式| ui
+    api --> async_layer
+    api --> rag
+    rag --> pg
+    rag --> redis
+    async_layer --> pg
+    async_layer --> cos
+```
+
+### 目录结构
+
+```
+.
+├── backend/
+│   └── app/
+│       ├── api/            # FastAPI 路由、依赖注入、Pydantic Schema
+│       ├── core/           # 配置、日志、安全、Redis、限流、可观测性
+│       ├── db/             # SQLAlchemy 模型、Repository 层、Alembic 迁移
+│       ├── ingestion/      # 文档解析、切分、向量化、Celery 任务
+│       ├── retrieval/      # 向量检索 / 全文检索 / 混合融合
+│       ├── llm/            # Planner、Query 改写、Rerank、答案校验、Prompt
+│       ├── services/       # 业务编排层
+│       ├── evaluation/     # 评测集管理、RAGAS 运行、打分
+│       ├── mcp_server/     # MCP 协议暴露知识库能力
+│       └── celery_app.py
+├── frontend/               # React 19 + TypeScript + Ant Design
+├── deploy/                 # Nginx 配置、systemd 服务单元
+├── postgres.Dockerfile     # pgvector + zhparser 自定义镜像
+└── docker-compose.yml
+```
+
+---
+
+## 文档入库流程
+
 ```mermaid
 flowchart TD
     upload[用户上传文件] --> hash[SHA256 幂等校验]
     hash -->|已存在| reject[拒绝重复上传]
-    hash -->|新文档| cos[写入腾讯云 COS]
-    cos --> db[创建文档记录<br/>status=uploading]
-    db --> task[提交 Celery 异步任务]
-    task --> parse[Docling 解析<br/>status=parsing]
-    parse --> split[文本递归切分<br/>status=indexing]
+    hash -->|新文档| store[写入对象存储]
+    store --> record[创建文档记录 status=uploading]
+    record --> task[创建 ingestion_task 并提交 Celery]
+    task --> parse[Docling 解析 status=parsing]
+    parse --> split[按标题层级切分 status=indexing]
     split --> embed[DashScope 批量向量化]
-    embed --> store[写入 document_chunks 表]
-    store --> ready[status=ready]
+    embed --> write[写入 document_chunks]
+    write --> ready[status=ready]
+    parse -->|失败| failed[status=failed 记录错误原因]
+    split -->|失败| failed
+    embed -->|失败| failed
 ```
 
+每个阶段的状态与错误信息都落在 `ingestion_tasks` 表里，前端可看到"这一步卡在哪"，失败后支持从失败步骤重跑，不用整个文档重来。
 
+---
 
-### RAG 问答流程
-![](https://cdn.nlark.com/yuque/__mermaid_v3/cec62b14c036e151a965514a3ff7488b.svg)
-
-
-
-### 管理员流程
-管理员可以管理用户、文档、角色权限，以及查看系统可观测性数据：
+## 问答链路
 
 ```mermaid
 flowchart TD
-    admin[管理员登录] --> user_mgmt[用户管理<br/>查看/禁用用户]
-    admin --> doc_mgmt[文档管理<br/>查看所有文档/删除]
-    admin --> role_mgmt[角色与权限管理<br/>创建角色/分配权限标签]
-    admin --> observe[可观测性<br/>LangSmith 追踪面板]
-    admin --> eval[评测管理<br/>创建评测集/运行评测/查看结果]
+    q[用户提问] --> history[加载会话历史 · 滑动窗口 5 轮]
+    history --> resolve[指代消解]
+    resolve --> plan{意图路由}
+    plan -->|无需检索| direct[直接生成]
+    plan -->|需要检索| r1[确定性首轮混合检索]
+    r1 --> rerank1[Rerank 精排 Top-5]
+    rerank1 --> observe{上下文是否充分}
+    observe -->|充分| gen[生成答案]
+    observe -->|不充分 且 未达轮次上限| rewrite[改写策略]
+    rewrite -->|语义改写| r1
+    rewrite -->|子问题分解| r1
+    rewrite -->|HyDE 假设文档| r1
+    observe -->|不充分 且 已达上限| refuse[拒答]
+    observe -->|判定无法回答| refuse
+    gen --> verify[引用与一致性校验]
+    verify -->|通过| out[SSE 流式输出 + 引用标注]
+    verify -->|不通过| refuse
+    refuse --> out
 ```
 
+**五层拒答拦截**：Planner 判定无法回答 / 向量最高分低于阈值 / 检索空结果 / Rerank Top-1 低于阈值 / 答案与上下文一致性校验失败。所有拒答收敛到同一个节点，输出统一的拒答话术与原因，便于统计和归因。
 
+---
 
-## 四、功能模块
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779636068946-197324d6-ec34-4cb1-a69b-eb1b82f583a5.png)
-
-### 文档管理模块
-+ 文档上传（PDF / DOCX / Markdown / HTML）
-+ SHA256 幂等校验（防止重复上传）
-+ 腾讯云 COS 对象存储
-+ 文档状态流转（uploading → parsing → indexing → ready / failed）
-+ ⭐️ Celery 异步任务处理
-+ 文档列表查询与删除
-+ 文档切片预览
-
-### 检索模块
-+ ⭐️ 向量检索（pgvector 余弦距离）
-+ ⭐️ 中文全文检索（PostgreSQL + zhparser）
-+ ⭐️ RRF 融合排序
-+ ⭐️ Reranker 交叉编码精排
-+ 文档级权限过滤
-
-### 问答模块
-+ ⭐️ LangGraph RAG 工作流
-+ ⭐️ Query 路由（简单问题 / 需要检索）
-+ ⭐️ Query 改写
-+ ⭐️ HyDE 假设文档生成
-+ ⭐️ Multi-Query 多角度查询
-+ ⭐️ Agentic 多轮检索决策
-+ SSE 流式输出
-+ 答案引用校验与来源标注
-+ 多轮对话上下文保持
-
-### 会话管理模块
-+ 创建 / 删除会话
-+ 会话列表查询
-+ 消息历史分页查询
-+ 多会话隔离
-
-### 认证与权限模块
-+ JWT 无状态认证
-+ RBAC 角色权限模型
-+ ⭐️ 基于权限标签的安全检索
-+ 接口级权限校验
-
-### 缓存与限流模块
-+ ⭐️ Redis 语义缓存（基于 RedisVL）
-+ ⭐️ 滑动窗口限流
-+ 增量索引（文档更新时自动失效相关缓存）
+## 关键设计与取舍
 
-### 可观测性模块
-+ ⭐️ LangSmith 全链路追踪
-+ 每次问答的节点级输入/输出/耗时追溯
+这部分是做这个项目时真正花时间的地方，也是我最想讲清楚的部分。
 
-### 评测模块
-+ ⭐️ RAGAS 自动化评测
-+ 评测数据集管理
-+ 批量评测运行
-+ Bad Case 归因分析
+**1. 切分为什么按标题层级，而不是递归字符切分**
 
-### MCP Server 模块
-+ ⭐️ 通过 MCP 协议暴露知识库能力
-+ 支持 Cursor、Claude Desktop 等外部 Agent 调用
-+ 文档检索 + 知识库问答两种 Tool
+技术文档、规范、手册这类材料，一句话脱离了章节标题就失去了约束条件（适用范围、前提条件、例外情况）。递归字符切分按长度硬切，很容易把条文编号和正文切成两个 chunk，召回时拿到正文但拿不到它属于哪一条。所以改成按标题层级切分，chunk 上带层级路径元信息，召回后能还原"这条出自哪一章哪一节"。
 
-### 部署模块
-+ Docker Compose 编排基础设施
-+ systemd 管理后端服务
-+ Nginx 反向代理 + 前端静态托管
-+ 宝塔面板辅助运维
+**2. 为什么必须上全文检索**
 
+纯向量检索对术语、编号、型号、里程这类**强精确匹配**的需求表现很差——语义相近但编号错了，答案就是错的。所以加了 zhparser 中文全文检索作为第二路。两路各有各的强项：向量路管语义泛化，全文路管精确命中。
 
+**3. RRF 融合的代价**
 
-## 五、技术选型
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779696594848-4acccaab-e733-47ac-b6f2-e5c8125a6be6.png)
+用 RRF（k=60，两路等权）是因为它免量纲——向量相似度是 0~1 的余弦，全文检索是 ts_rank 分值，两者根本不在一个尺度上，加权求和还得手工调权重，换批文档就得重调。RRF 只看排名不看分数，规避了这个问题。
 
-### 后端
-核心：
+代价是**分数信息被丢掉了**：融合后你只知道候选的相对次序，不知道"有多相关"。所以后面必须补一层 Rerank——它不只是提精度，更是把被 RRF 丢掉的置信度重新找回来，后续的拒答阈值才有依据。
 
-+ Python 3.12+
-+ FastAPI 框架（异步 Web 框架）
-+ SQLAlchemy 2.0 ORM + Alembic 数据迁移
-+ Pydantic 数据校验与序列化
-+ uv 包管理工具
+**4. 0.6 向量阈值不是拍脑袋定的**
 
-AI 技术：
+它的作用是**预过滤**：先砍掉明显不相关的候选，把进 Rerank 的候选数压下来，直接省掉一部分精排调用成本。定太高会误杀，定太低省不了钱，是看着召回率曲线和精排开销一起定的。
 
-+ ⭐️ LangChain 框架（文档处理、Embedding、检索链路）
-+ ⭐️ LangGraph 工作流引擎（RAG 状态机编排）
-+ ⭐️ DashScope text-embedding-v3 向量化
-+ ⭐️ DashScope Reranker 精排
-+ ⭐️ 通义千问 Chat 大模型
-+ ⭐️ SSE 流式输出
-+ ⭐️ Agentic RAG（多轮检索决策）
-+ ⭐️ MCP 协议集成
+**5. Rerank 阈值从 0.5 降到 0.3，是被一个真实 bad case 逼的**
 
-数据存储：
+最初 Rerank Top-1 阈值定在 0.5，上线后发现现场人员的**口语化提问**大量被误杀——比如"打锚杆间距多少"这种问法，和文档里"锚杆布置间距应符合下列规定"的书面表述差异很大，精排分数被压到 0.5 以下，直接走了拒答。这类问题明明有答案，却答不出来，是最伤体验的。把阈值降到 0.3 之后召回正常。
 
-+ PostgreSQL 数据库
-+ ⭐️ pgvector 向量检索扩展
-+ ⭐️ zhparser 中文全文检索扩展
-+ ⭐️ Redis（语义缓存 + 限流 + Celery broker）
-+ 腾讯云 COS 对象存储
+这个 case 的结论是：**拒答阈值不能只看指标调，必须拿真实用户的问法去回归**。
 
-异步任务：
+**6. 一致性校验拦不住"看起来完整"的错误答案**
 
-+ ⭐️ Celery 分布式任务队列
-+ Redis 作为消息 Broker 和结果 Backend
+反过来的 bad case 更隐蔽：知识库里只入库了一部分报告，用户问的内容恰好和某个 chunk 话题高度吻合，五层校验全过，模型基于**残缺的数据**答出了一个看起来非常完整、每条都带引用的答案。一致性校验在这里是失效的——答案确实忠实于上下文，只是上下文本身不完整。
 
-可观测性与评测：
+处理办法是在生成 Prompt 里明确要求：如果上下文不足以覆盖问题的全部方面，**必须说明缺哪部分**，而不是自行补全。这类问题的一致性校验拦不住，只能靠覆盖度约束和资料范围元信息。
 
-+ ⭐️ LangSmith 全链路追踪
-+ ⭐️ RAGAS 评测框架
+**7. 降级要能被观测到，否则等于静默失败**
 
-### 前端
-核心：
+双路检索任意一路异常会自动降级为另一路，Rerank 超时也会降级为不重排。但"能降级"只是第一步——如果降级悄悄发生没人知道，链路看着正常、效果一直在掉，这是最危险的状态。所以降级按**5 分钟窗口统计降级率**，超过阈值推送到群机器人告警，并且**分路统计**，一眼能看出是向量路坏了还是全文路坏了。
 
-+ React 18 + TypeScript
-+ Ant Design 组件库
-+ TanStack Query 数据请求
-+ React Router 路由
-+ Markdown 渲染 + 代码高亮
+**8. 会话历史为什么是滑动窗口 + 指代消解**
 
-工程化：
+全量历史塞进 Prompt 会迅速吃掉上下文预算，而且早期内容与当前问题无关时还会干扰检索。所以只保留最近 5 轮，并在**进图之前**做指代消解——否则"它的间距是多少"这种问法，进检索时拿到的 query 是残缺的，第一步就召不回东西。
 
-+ Vite 构建工具
-+ OpenAPI TypeScript Codegen（自动生成 API 类型）
-+ ESLint 代码校验
+**9. 入库任务为什么要单独建表追踪**
 
-### 部署与运维
-+ Docker + Docker Compose
-+ Nginx 反向代理
-+ systemd 服务管理
-+ 宝塔面板
+文档解析是分钟级的耗时操作，放在请求里同步做必然超时。交给 Celery 之后，如果只有一个"成功/失败"，用户看到的就是转圈然后失败，不知道卡在哪、能不能重试。所以每一步都写 `ingestion_tasks` 表，失败记录到具体步骤，支持从失败步骤重跑而不是整个文档重来。任务本身做了幂等设计，重复提交不会产生重复 chunk。
 
-### 开发工具
-+ ⭐️ Cursor AI 编辑器
+**10. 语义缓存的阈值为什么定得这么高（0.92）**
 
+问答场景下缓存命中错误的代价比缓存未命中高得多——缓存未命中只是慢一点，命中错误的语义相近问题就是**答错**。所以宁可命中率低一些，也要保证命中的确实是同一个问题。另外缓存命中必须叠加**权限范围校验**：同样一句话，不同权限的用户可见的文档集不同，答案也不同。
 
+---
 
-## 六、架构设计
-从客户端发送请求开始，自上而下经过一系列处理，最终得到响应结果。架构图如下：
+## 数据模型
 
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779636514169-c06a5252-a191-44a1-b78d-ec23afabaa47.png)
+| 表                                      | 用途                  |
+| -------------------------------------- | ------------------- |
+| `documents`                            | 文档元数据、状态、权限标签       |
+| `document_chunks`                      | 切分后的文本块、层级路径、向量     |
+| `ingestion_tasks`                      | 入库任务每一步的状态与错误信息     |
+| `conversations` / `messages`           | 会话与消息               |
+| `answer_citations`                     | 答案引用来源，可回溯到具体 chunk |
+| `evaluation_runs` / `evaluation_items` | 评测运行与逐条结果           |
+| `users` / `roles`                      | 用户与角色权限             |
 
+---
 
+## 部署
 
-## 七、准备工作
-### 新建代码仓库
-利用 GitHub 搭建开源代码仓库，点 star 的都是精神股东
+```bash
+docker compose up -d                      # PostgreSQL + Redis
+sudo cp deploy/rag-kb-api.service /etc/systemd/system/
+sudo cp deploy/rag-kb-celery.service /etc/systemd/system/
+sudo systemctl enable --now rag-kb-api rag-kb-celery
+sudo cp deploy/nginx.conf /etc/nginx/conf.d/rag-kb.conf   # 反向代理 + 前端静态托管
+```
 
-代码仓库：[https://github.com/aixunlian/rag-knowledge-base](https://github.com/aixunlian/rag-knowledge-base)
+前端 `npm run build` 后由 Nginx 托管静态资源，`/api` 反代到后端 8000 端口。
 
+---
 
+## 后续计划
 
-### AI 学习资源
-#### 1、AI 面试题
-建议大家在学习 AI 项目的过程中，持续阅读 AI 大模型相关的面试题，巩固知识点。这块鱼皮已经帮大家拿捏了，我们的程序员面试刷题神器面试鸭搞了个 [AI 大模型面试题库](https://www.mianshiya.com/bank/1906189461556076546)，建议没事就阅读一些题目来学习学习。
+- [ ] 结构化数据的问答（当前只处理非结构化文档）
+- [ ] 增量索引：文档更新时只重建受影响的 chunk，并失效相关语义缓存
+- [ ] 多模态：图片与表格的解析与检索
+- [ ] 检索链路的 A/B 实验框架，让策略调整有数据支撑
 
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779635364146-d9c40ecc-8707-4d3a-95b8-94f70d7b0299.png)
+---
 
+## 说明
 
-
-#### 2、开源 AI 知识库
-由于 AI 技术日新月异，建议大家平时多关注 AI 相关的资讯动态，比如 [鱼皮开源的 AI 知识库](https://github.com/liyupi/ai-guide)，汇总了热门的 AI 大模型和工具，比如 Deepseek 使用指南、提示词技巧分享、知识干货、应用场景、AI 变现、行业资讯、教程资源等一系列内容，帮助你快速掌握 AI 技术，走在时代前沿。
-
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779635391447-7289345e-b44d-495e-a7b6-206b9e38805e.png)
-
-
-
-#### 3、免费 AI 交流
-编程导航提供了 [免费的 AI 学习交流社区](https://ai.codefather.cn/)，大家可以畅所欲言！
-
-![](https://cdn.nlark.com/yuque/0/2026/png/33547719/1779635401291-c82ddcc1-2b3a-453e-bfc6-ec252afed1b3.png)
-
-
-
-## 八、学习大纲
-为了帮大家循序渐进地学习，教程将项目设计为三个阶段，可以根据自己的时间和水平按需学习。
-
-### 第一阶段 - RAG 核心链路
-第 1 期：项目总览
-
-+ 项目介绍
-+ 项目优势
-+ 业务流程
-+ 功能模块
-+ 技术选型
-+ 架构设计
-+ 准备工作（前置知识 + AI 学习资源）
-+ 学习大纲
-
-
-
-第 2 期：项目初始化
-
-+ 后端项目初始化（FastAPI + SQLAlchemy + Alembic + 配置管理 + 日志 + COS）
-+ 前端项目初始化（React + Ant Design + TanStack Query + 路由）
-+ 前后端联调
-
-
-
-第 3 期：文档向量化
-
-+ 需求分析与方案设计
-+ 文档上传与 COS 存储
-+ Docling 文档解析
-+ RecursiveCharacterTextSplitter 文本切分
-+ DashScope Embedding 向量化
-+ 异步处理与状态流转
-+ 前端文档管理页面
-
-
-
-第 4 期：知识库问答
-
-+ LangChain + LangGraph 入门
-+ RAG 工作流设计（检索→生成）
-+ 向量检索实现
-+ SSE 流式输出
-+ 答案引用与来源标注
-+ 多轮对话上下文
-+ 前端对话页面
-
-
-
-### 第二阶段 - 检索与工作流进阶
-第 5 期：Query 优化
-
-+ Query 路由
-+ Query 改写
-+ HyDE 假设文档生成
-+ Multi-Query 多角度查询
-
-
-
-第 6 期：全文检索、混合检索与 RRF
-
-+ PostgreSQL + zhparser 全文检索
-+ 向量检索 + 全文检索双通道
-+ RRF 倒数排名融合
-
-
-
-第 7 期：Agentic RAG
-
-+ Agent 多轮检索决策
-+ 信息充分性判断
-+ 动态检索策略调整
-
-
-
-第 8 期：检索链路优化与答案可信度
-
-+ Reranker 交叉编码精排
-+ 答案引用校验
-+ 可信度评估
-
-
-
-### 第三阶段 - 企业级能力建设
-第 9 期：可观测性
-
-+ LangSmith 集成
-+ 全链路追踪配置
-+ 节点级性能分析
-
-
-
-第 10 期：评测与 Bad Case 分析
-
-+ RAGAS 评测框架集成
-+ 评测数据集管理
-+ 批量评测运行
-+ Bad Case 归因与改进
-
-
-
-第 11 期：认证、权限与安全检索
-
-+ JWT 无状态认证
-+ RBAC 角色权限模型
-+ 基于权限标签的文档级安全检索
-
-
-
-第 12 期：缓存、限流、异步任务与增量索引
-
-+ Redis 语义缓存（RedisVL）
-+ 滑动窗口限流
-+ Celery 异步任务
-+ 增量索引与缓存失效
-
-
-
-第 13 期：MCP Server 集成
-
-+ MCP 协议介绍
-+ 知识库 MCP Server 实现
-+ Cursor / Claude Desktop 接入验证
-
-
-
-第 14 期：部署上线
-
-+ Docker Compose 编排 PostgreSQL + Redis
-+ systemd 管理后端 + Celery Worker
-+ Nginx 反向代理与前端部署
-+ 宝塔面板配置
-
+本项目为个人独立开发的学习与工程实践项目，代码与文档均为原创实现，不含任何公司项目代码或业务数据。
